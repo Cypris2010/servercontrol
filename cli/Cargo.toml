@@ -1,0 +1,12 @@
+[package]
+name = "servercontrol-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI für Server Control for Farming Simulator 2025"
+
+[[bin]]
+name = "servercontrol"
+path = "src/main.rs"
+
+[dependencies]
+servercontrol-core = { path = "../crates/core" }

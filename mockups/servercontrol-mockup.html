@@ -1,0 +1,1049 @@
+<meta charset="utf-8">
+<title>Server Control — GUI-Mockup</title>
+<style>
+  :root{
+    --bg:#F4F1E9; --surface:#FEFDF9; --surface-2:#EEEADF; --border:#E1DCCC;
+    --ink:#242019; --muted:#6F6857;
+    --accent:#855A17; --accent-2:#A9762B; --accent-ink:#FFFFFF; --accent-soft:rgba(133,90,23,.10);
+    --ok:#2F7D46; --ok-bg:rgba(47,125,70,.13);
+    --neutral:#6E6858; --neutral-bg:rgba(110,104,88,.13);
+    --bad:#B5432F; --bad-bg:rgba(181,67,47,.13);
+    --font-ui:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+    --radius:8px; --shadow:0 1px 2px rgba(30,25,15,.05),0 4px 16px rgba(30,25,15,.05);
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#181510; --surface:#211D16; --surface-2:#2A251C; --border:#362F23;
+    --ink:#EDE7DA; --muted:#A79B84;
+    --accent:#D8A24A; --accent-2:#E7B968; --accent-ink:#201A0F; --accent-soft:rgba(216,162,74,.14);
+    --ok:#5FB06A; --ok-bg:rgba(95,176,106,.16);
+    --neutral:#9A917D; --neutral-bg:rgba(154,145,125,.15);
+    --bad:#E07A63; --bad-bg:rgba(224,122,99,.16);
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.28);
+  }}
+  :root[data-theme="light"]{
+    --bg:#F4F1E9; --surface:#FEFDF9; --surface-2:#EEEADF; --border:#E1DCCC;
+    --ink:#242019; --muted:#6F6857;
+    --accent:#855A17; --accent-2:#A9762B; --accent-ink:#FFFFFF; --accent-soft:rgba(133,90,23,.10);
+    --ok:#2F7D46; --ok-bg:rgba(47,125,70,.13);
+    --neutral:#6E6858; --neutral-bg:rgba(110,104,88,.13);
+    --bad:#B5432F; --bad-bg:rgba(181,67,47,.13);
+    --shadow:0 1px 2px rgba(30,25,15,.05),0 4px 16px rgba(30,25,15,.05);
+  }
+  :root[data-theme="dark"]{
+    --bg:#181510; --surface:#211D16; --surface-2:#2A251C; --border:#362F23;
+    --ink:#EDE7DA; --muted:#A79B84;
+    --accent:#D8A24A; --accent-2:#E7B968; --accent-ink:#201A0F; --accent-soft:rgba(216,162,74,.14);
+    --ok:#5FB06A; --ok-bg:rgba(95,176,106,.16);
+    --neutral:#9A917D; --neutral-bg:rgba(154,145,125,.15);
+    --bad:#E07A63; --bad-bg:rgba(224,122,99,.16);
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.28);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-ui);
+    font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  button{font:inherit;color:inherit;cursor:pointer}
+  ::selection{background:var(--accent-soft)}
+
+  .app{display:grid;grid-template:"side top" auto "side main" 1fr / 232px 1fr;
+    height:100vh;min-height:560px}
+
+  /* ---------- Sidebar ---------- */
+  .side{grid-area:side;background:var(--surface);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;min-height:0}
+  .brand{padding:18px 18px 16px;border-bottom:1px solid var(--border)}
+  .brand .mark{font-family:var(--font-mono);font-weight:600;font-size:13px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:8px}
+  .brand .sub{color:var(--muted);font-size:11.5px;margin-top:5px;letter-spacing:.02em}
+  nav{padding:10px 10px;display:flex;flex-direction:column;gap:2px}
+  .nav-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);
+    padding:10px 10px 6px}
+  .nav-item{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:6px;
+    color:var(--muted);background:none;border:0;width:100%;text-align:left;font-size:13.5px}
+  .nav-item svg{width:17px;height:17px;flex:none;opacity:.85}
+  .nav-item:hover{background:var(--surface-2);color:var(--ink)}
+  .nav-item.active{background:var(--accent-soft);color:var(--ink);font-weight:550;
+    box-shadow:inset 3px 0 0 var(--accent)}
+  .side-foot{margin-top:auto;padding:14px 18px;border-top:1px solid var(--border);
+    color:var(--muted);font-size:11px}
+
+  /* ---------- Top bar ---------- */
+  .top{grid-area:top;background:var(--surface);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:16px;padding:0 18px;height:58px}
+  .server-pick{display:flex;align-items:center;gap:9px;padding:7px 11px;border:1px solid var(--border);
+    border-radius:7px;background:var(--bg);min-width:150px}
+  .server-pick .name{font-weight:600}
+  .server-pick .chev{margin-left:auto;color:var(--muted)}
+  .status{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:550}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .status.online .dot{background:var(--ok);box-shadow:0 0 0 3px var(--ok-bg)}
+  .status.offline .dot{background:var(--neutral);box-shadow:0 0 0 3px var(--neutral-bg)}
+  .status .ver{color:var(--muted);font-family:var(--font-mono);font-size:12px;font-weight:400}
+  .stats{display:flex;gap:7px;margin-left:4px}
+  .stat{display:flex;flex-direction:column;line-height:1.15;padding:4px 11px;border:1px solid var(--border);
+    border-radius:7px;background:var(--bg)}
+  .stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .stat .v{font-family:var(--font-mono);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+  .top .spacer{margin-left:auto}
+  .srv-actions{display:flex;gap:8px;align-items:center}
+  .sc-btn{display:inline-flex;align-items:center;gap:7px;padding:7px 13px}
+  .sc-btn svg{width:16px;height:16px}
+  .modal{position:fixed;inset:0;z-index:80;display:grid;place-items:center;background:rgba(0,0,0,.45);padding:20px}
+  .modal[hidden]{display:none}
+  .modal-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);max-width:410px;width:100%;padding:22px 24px}
+  .modal-card h3{margin:0 0 8px;font-size:16px}
+  .modal-card p{margin:0 0 18px;color:var(--muted);font-size:13.5px;line-height:1.5}
+  .modal-foot{display:flex;justify-content:flex-end;gap:10px}
+  .demo{display:flex;align-items:center;gap:8px}
+  .demo .tag{font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);
+    border:1px dashed var(--border);padding:2px 6px;border-radius:5px}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;background:var(--bg)}
+  .seg button{padding:6px 12px;background:none;border:0;color:var(--muted);font-size:12.5px;font-weight:550}
+  .seg button.on{background:var(--accent);color:var(--accent-ink)}
+  .icon-btn{width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--border);
+    border-radius:7px;background:var(--bg);color:var(--muted)}
+  .icon-btn:hover{color:var(--ink)}
+
+  /* ---------- Main ---------- */
+  .main{grid-area:main;min-height:0;overflow:auto;padding:22px 26px 90px}
+  .view-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:4px}
+  .view-head h1{font-size:20px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+  .counts{display:flex;gap:14px;color:var(--muted);font-size:12.5px}
+  .counts b{color:var(--ink);font-variant-numeric:tabular-nums;font-weight:600}
+  .view-sub{color:var(--muted);font-size:12.5px;margin:2px 0 16px}
+
+  .banner{display:none;align-items:center;gap:11px;padding:11px 14px;border-radius:var(--radius);
+    background:var(--neutral-bg);border:1px solid var(--border);color:var(--ink);
+    font-size:13px;margin-bottom:16px}
+  .banner svg{width:18px;height:18px;flex:none;color:var(--neutral)}
+  .app.is-online .banner{display:flex}
+
+  /* toolbar */
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .search{position:relative;flex:1;min-width:200px}
+  .search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--muted)}
+  .search input{width:100%;padding:9px 12px 9px 34px;border:1px solid var(--border);border-radius:7px;
+    background:var(--surface);color:var(--ink);font:inherit}
+  .search input::placeholder{color:var(--muted)}
+  input:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .filters{display:inline-flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;background:var(--surface)}
+  .filters button{padding:8px 12px;background:none;border:0;border-right:1px solid var(--border);
+    color:var(--muted);font-size:12.5px;font-weight:550}
+  .filters button:last-child{border-right:0}
+  .filters button.on{background:var(--accent-soft);color:var(--ink)}
+  select{padding:8px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface);
+    color:var(--ink);font:inherit}
+
+  /* table */
+  .table-wrap{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface);
+    box-shadow:var(--shadow)}
+  .tscroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;min-width:820px}
+  thead th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+    font-weight:600;padding:11px 12px;border-bottom:1px solid var(--border);background:var(--surface-2);
+    position:sticky;top:0;z-index:1}
+  tbody td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:var(--accent-soft)}
+  tbody tr.sel{background:var(--accent-soft)}
+  .c-sel{width:38px;text-align:center}
+  .c-status{width:132px}
+  td.c-ver,td.c-size{font-family:var(--font-mono);font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
+  td.c-file{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+  .c-dlc{width:52px;text-align:center}
+  thead th.sortable{cursor:pointer;user-select:none}
+  thead th.sortable:hover{color:var(--ink)}
+  th .arrow{margin-left:5px;color:var(--accent);font-size:10px}
+  thead th.sorted{color:var(--ink)}
+  .mod-name{font-weight:550}
+  .mod-issue{font-size:11.5px;color:var(--bad);margin-top:2px;display:flex;align-items:center;gap:5px}
+  .mod-issue svg{width:12px;height:12px;flex:none}
+  input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+  input[type=checkbox]:disabled{cursor:not-allowed;opacity:.4}
+
+  .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:20px;
+    font-size:11.5px;font-weight:600;letter-spacing:.01em;white-space:nowrap}
+  .badge .bd{width:6px;height:6px;border-radius:50%}
+  .badge.active{background:var(--ok-bg);color:var(--ok)} .badge.active .bd{background:var(--ok)}
+  .badge.inactive{background:var(--neutral-bg);color:var(--neutral)} .badge.inactive .bd{background:var(--neutral)}
+  .badge.orphan{background:var(--bad-bg);color:var(--bad)} .badge.orphan .bd{background:var(--bad)}
+  .dlc-tag{font-family:var(--font-mono);font-size:10px;font-weight:600;color:var(--accent-2);
+    border:1px solid var(--border);border-radius:4px;padding:1px 5px}
+  .muted-dash{color:var(--muted)}
+
+  /* action bar */
+  .actionbar{position:fixed;left:232px;right:0;bottom:0;background:var(--surface);
+    border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;
+    padding:12px 26px;box-shadow:0 -4px 16px rgba(30,25,15,.05)}
+  @media (prefers-color-scheme:dark){.actionbar{box-shadow:0 -4px 16px rgba(0,0,0,.28)}}
+  .selinfo{font-size:13px;color:var(--muted)} .selinfo b{color:var(--ink);font-variant-numeric:tabular-nums}
+  .actionbar .grow{margin-left:auto}
+  .btn{padding:9px 16px;border-radius:7px;border:1px solid var(--border);background:var(--surface-2);
+    color:var(--ink);font-size:13.5px;font-weight:550}
+  .btn:hover{border-color:var(--muted)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  .btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2)}
+  .btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 30%,var(--border))}
+  .btn.danger:hover{background:var(--bad-bg)}
+  .btn:disabled{opacity:.42;cursor:not-allowed;border-color:var(--border);background:var(--surface-2);color:var(--muted)}
+  .app.is-online .lockable{opacity:.42;pointer-events:none}
+  .lockhint{display:none;font-size:12px;color:var(--neutral);align-items:center;gap:6px}
+  .app.is-online .lockhint{display:flex}
+
+  /* views / G6 */
+  .view[hidden]{display:none}
+  .inp:disabled{opacity:.5;cursor:not-allowed}
+  .hint2{font-weight:400;color:var(--muted);font-size:11.5px}
+  .app.is-online #viewSettings .settings-form{opacity:.55;pointer-events:none}
+  .app.is-online #viewSettings .editor-foot{display:none}
+  .app:not(.view-mods) .actionbar{display:none}
+  .placeholder{display:grid;place-items:center;text-align:center;padding:70px 20px;color:var(--muted)}
+  .placeholder .ph-ic{width:54px;height:54px;border-radius:13px;background:var(--surface-2);
+    border:1px solid var(--border);display:grid;place-items:center;margin:0 auto 14px;color:var(--muted)}
+  .placeholder h2{margin:0 0 5px;color:var(--ink);font-size:18px}
+
+  @media (prefers-reduced-motion:no-preference){
+    .status.online .dot{animation:pulse 2.4s ease-in-out infinite}
+    @keyframes pulse{0%,100%{box-shadow:0 0 0 3px var(--ok-bg)}50%{box-shadow:0 0 0 5px var(--ok-bg)}}
+  }
+  /* server picker + dropdown */
+  .server-wrap{position:relative}
+  .server-pick{cursor:pointer}
+  .server-pick:hover{border-color:var(--muted)}
+  .status.disc .dot{background:transparent;border:2px solid var(--muted);box-shadow:none}
+  .server-menu{position:absolute;top:46px;left:0;min-width:262px;background:var(--surface);
+    border:1px solid var(--border);border-radius:11px;box-shadow:var(--shadow);padding:6px;z-index:40;display:none}
+  .server-wrap.open .server-menu{display:block}
+  .menu-head{padding:9px 11px 7px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.09em}
+  .menu-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:none;
+    padding:9px 11px;border-radius:7px;font-size:13.5px;color:var(--ink)}
+  .menu-item:hover{background:var(--surface-2)}
+  .menu-item svg{width:16px;height:16px;flex:none;color:var(--muted)}
+  .menu-item .m-dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .menu-item .m-sub{margin-left:auto;font-size:11px;color:var(--muted);font-family:var(--font-mono)}
+  .menu-item.current{background:var(--accent-soft)}
+  .menu-sep{height:1px;background:var(--border);margin:5px 4px}
+  .menu-item.danger{color:var(--bad)} .menu-item.danger svg{color:var(--bad)}
+
+  /* disconnected overlay */
+  .discon{position:fixed;left:232px;top:58px;right:0;bottom:0;display:none;place-items:center;
+    background:var(--bg);z-index:25;padding:24px}
+  .app.disconnected .discon{display:grid}
+  .app.disconnected .actionbar{display:none}
+  .discon .card{max-width:400px;text-align:center;display:flex;flex-direction:column;
+    align-items:center;gap:6px}
+  .discon .ic{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;
+    background:var(--surface-2);border:1px solid var(--border);color:var(--muted);margin-bottom:6px}
+  .discon h2{margin:0;font-size:18px}
+  .discon p{margin:0 0 12px;color:var(--muted);font-size:13px;max-width:320px}
+
+  /* ---------- G1: Profilverwaltung ---------- */
+  .manage{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column}
+  .manage[hidden]{display:none}
+  .manage-top{height:58px;flex:none;display:flex;align-items:center;justify-content:space-between;
+    padding:0 22px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .manage-top h2{margin:0;font-size:16px}
+  .manage-scroll{flex:1;min-height:0;overflow:auto}
+  .manage-body{display:flex;gap:24px;padding:24px;max-width:1000px;margin:0 auto;width:100%}
+  .plist{width:268px;flex:none;display:flex;flex-direction:column;gap:9px}
+  .plist-head{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);padding:2px 4px}
+  .pcard{text-align:left;border:1px solid var(--border);border-radius:9px;background:var(--surface);
+    padding:11px 13px;display:flex;flex-direction:column;gap:3px;width:100%;cursor:pointer}
+  .pcard:hover{border-color:var(--muted)}
+  .pcard.active{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+  .pcard .pn{font-weight:600;display:flex;align-items:center;gap:8px}
+  .pcard .pa{font-family:var(--font-mono);font-size:11.5px;color:var(--muted)}
+  .pcard .ps{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:2px}
+  .peditor{flex:1;min-width:0}
+  .card2{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:22px 24px;box-shadow:var(--shadow)}
+  .card2 h3{margin:0 0 3px;font-size:16px}
+  .card2 .lead{color:var(--muted);font-size:12.5px;margin:0 0 18px}
+  .sec+.sec{margin-top:22px}
+  .sec-title{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+    margin:0 0 13px;padding-bottom:8px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+  .field{display:flex;flex-direction:column;gap:6px;margin-bottom:13px}
+  .field label{font-size:12.5px;font-weight:550}
+  .field .req{color:var(--bad);margin-left:1px}
+  .inp{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:7px;
+    background:var(--bg);color:var(--ink);font:inherit}
+  .inp::placeholder{color:var(--muted)}
+  select.inp{cursor:pointer}
+  .row2{display:grid;grid-template-columns:140px 1fr;gap:12px}
+  .row2.even{grid-template-columns:1fr 1fr}
+  .pw{position:relative}
+  .pw .inp{padding-right:42px;font-family:var(--font-mono)}
+  .eye{position:absolute;right:5px;top:50%;transform:translateY(-50%);width:32px;height:30px;
+    display:grid;place-items:center;border:0;background:none;color:var(--muted);border-radius:6px}
+  .eye:hover{color:var(--ink)}
+  .check{display:flex;align-items:center;gap:9px;font-size:13px;margin-bottom:6px}
+  .switchrow{display:flex;align-items:center;gap:10px}
+  .switchrow .cap{font-size:11.5px;color:var(--muted);margin-left:auto}
+  .ftp-body[hidden]{display:none}
+  .ftp-body{margin-top:14px}
+  .editor-foot{display:flex;align-items:center;gap:10px;margin-top:22px;padding-top:16px;border-top:1px solid var(--border)}
+  .editor-foot .grow{margin-left:auto}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);
+    color:var(--bg);padding:10px 16px;border-radius:8px;font-size:13px;z-index:70;opacity:0;
+    transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+
+  /* G3 Bereitstellen */
+  .tabs{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface);margin-bottom:16px}
+  .tabs button{padding:9px 16px;background:none;border:0;border-right:1px solid var(--border);color:var(--muted);font-size:13.5px;font-weight:550}
+  .tabs button:last-child{border-right:0}
+  .tabs button.on{background:var(--accent-soft);color:var(--ink)}
+  .tabpane[hidden]{display:none}
+  .hub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr));gap:16px}
+  .hubcard{border:1px solid var(--border);border-radius:11px;background:var(--surface);padding:16px;display:flex;flex-direction:column;gap:14px;box-shadow:var(--shadow);min-width:0}
+  .hubcard .hc-head{display:flex;gap:14px;min-width:0}
+  .thumb{width:54px;height:54px;flex:none;border-radius:9px;background:var(--surface-2);border:1px solid var(--border);display:grid;place-items:center;font-family:var(--font-mono);font-weight:600;color:var(--muted);font-size:14px}
+  .hubcard .meta{min-width:0;flex:1}
+  .hubcard .hn{font-weight:600;line-height:1.25;text-wrap:balance}
+  .hubcard .ha{font-size:12px;color:var(--muted)}
+  .hubcard .hr{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px;margin-top:3px;font-variant-numeric:tabular-nums}
+  .star{color:var(--accent-2)}
+  .hubcard .file{font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hubcard .foot{display:flex;align-items:center;gap:10px;margin-top:auto}
+  .install{margin-left:auto}
+  .hublink{display:inline-flex;align-items:center;gap:7px;text-decoration:none;flex:none}
+  .progress{flex:1;height:7px;border-radius:5px;background:var(--surface-2);overflow:hidden;display:none}
+  .progress .bar{height:100%;width:0;background:var(--accent);transition:width .15s ease}
+  .hubcard.busy .progress{display:block}
+  .hubcard.busy .install{display:none}
+  .dropzone{border:1.5px dashed var(--border);border-radius:12px;padding:38px 24px;text-align:center;color:var(--muted);background:var(--surface)}
+  .uprow{margin-top:16px;border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:14px 16px;display:none}
+  .uprow.show{display:block}
+  .uprow .uh{display:flex;align-items:center;gap:10px;font-size:13px}
+  .uprow .uf{font-family:var(--font-mono);font-size:12px}
+  .uprow .path{margin-left:auto;font-size:11.5px;color:var(--muted)}
+  .upbar{height:8px;border-radius:5px;background:var(--surface-2);overflow:hidden;margin-top:10px}
+  .upbar .b{height:100%;width:0;background:var(--accent);transition:width .15s ease}
+  .nofile{margin-top:16px;border:1px solid color-mix(in srgb,var(--bad) 30%,var(--border));background:var(--bad-bg);border-radius:10px;padding:14px 16px;color:var(--ink);display:none;gap:11px;align-items:flex-start}
+  .nofile.show{display:flex}
+  .nofile>svg{color:var(--bad);flex:none}
+
+  @media (max-width:720px){
+    .manage-body{flex-direction:column}
+    .plist{width:auto}
+    .app{grid-template:"top" auto "main" 1fr / 1fr}
+    .side{display:none}
+    .actionbar{left:0}
+    .stats{display:none}
+  }
+</style>
+
+<div class="app is-offline" id="app">
+  <!-- Sidebar -->
+  <aside class="side">
+    <div class="brand">
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M3 15a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M7 15l0 .01"/><path d="M17 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M10.5 17l6.5 0"/><path d="M20 15.2v-4.2a1 1 0 0 0 -1 -1h-6l-2 -5h-6v6.5"/><path d="M18 5h-1a1 1 0 0 0 -1 1v4"/></svg>
+        Server&nbsp;Control
+      </div>
+      <div class="sub">for Farming Simulator 2025</div>
+    </div>
+    <nav>
+      <div class="nav-label">Server</div>
+      <!-- Icons: Tabler Icons (MIT, © 2020–2026 Paweł Kuna) — https://tabler.io/icons; Lizenz siehe mockups/ICON-CREDITS.md -->
+      <button class="nav-item" data-view="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg>Spieleinstellungen</button>
+      <button class="nav-item active" data-view="mods"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3a1 1 0 0 0 1 -1v-1a2 2 0 0 1 4 0v1a1 1 0 0 0 1 1h3a1 1 0 0 1 1 1v3a1 1 0 0 0 1 1h1a2 2 0 0 1 0 4h-1a1 1 0 0 0 -1 1v3a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1v-1a2 2 0 0 0 -4 0v1a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h1a2 2 0 0 0 0 -4h-1a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1"/></svg>Mods</button>
+      <button class="nav-item" data-view="provide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 9l5 -5l5 5"/><path d="M12 4l0 12"/></svg>Bereitstellen</button>
+      <button class="nav-item" data-view="placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2"/><path d="M9 9l1 0"/><path d="M9 13l6 0"/><path d="M9 17l6 0"/></svg>Log</button>
+    </nav>
+    <div class="side-foot">Mockup · Beispieldaten<br>keine Live-Verbindung</div>
+  </aside>
+
+  <!-- Top bar -->
+  <header class="top">
+    <div class="server-wrap" id="serverWrap">
+      <button class="server-pick" id="serverPick" aria-haspopup="menu" aria-expanded="false">
+        <span class="dot" id="pickDot" style="background:var(--neutral)"></span>
+        <span class="name" id="pickName">ccc222</span>
+        <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M6 9l6 6l6 -6"/></svg></span>
+      </button>
+      <div class="server-menu" role="menu">
+        <div class="menu-head">Wechseln zu</div>
+        <button class="menu-item current" role="menuitem"><span class="m-dot" id="menuDot" style="background:var(--neutral)"></span><span id="menuCurName">ccc222</span><span class="m-sub" id="menuState">verbunden</span></button>
+        <button class="menu-item" role="menuitem" data-switch="Hetzner-Test"><span class="m-dot" style="background:transparent;border:2px solid var(--muted)"></span>Hetzner-Test<span class="m-sub">nicht verbunden</span></button>
+        <button class="menu-item" role="menuitem" data-switch="GPORTAL Miete"><span class="m-dot" style="background:transparent;border:2px solid var(--muted)"></span>GPORTAL Miete<span class="m-sub">nicht verbunden</span></button>
+        <div class="menu-sep"></div>
+        <button class="menu-item danger" id="miDisconnect" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2"/><path d="M9 12h12l-3 -3"/><path d="M18 15l3 -3"/></svg>Verbindung trennen</button>
+        <button class="menu-item" id="miManage" role="menuitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v2a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-2"/><path d="M12 20h-6a3 3 0 0 1 -3 -3v-2a3 3 0 0 1 3 -3h10.5"/><path d="M16 18a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M18 14.5v1.5"/><path d="M18 20v1.5"/><path d="M21.032 16.25l-1.299 .75"/><path d="M16.27 19l-1.3 .75"/><path d="M14.97 16.25l1.3 .75"/><path d="M19.733 19l1.3 .75"/><path d="M7 8v.01"/><path d="M7 16v.01"/></svg>Server verwalten…</button>
+      </div>
+    </div>
+    <div class="srv-actions">
+      <button class="btn primary sc-btn" id="btnStart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16l13 -8l-13 -8"/></svg>Starten</button>
+      <button class="btn sc-btn" id="btnRestart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.05 11a8 8 0 1 1 .5 4m-.5 5v-5h5"/></svg>Neu starten</button>
+      <button class="btn danger sc-btn" id="btnStop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2l0 -10"/></svg>Stoppen</button>
+    </div>
+    <div class="status offline" id="status">
+      <span class="dot"></span><span id="statusText">Offline</span>
+      <span class="ver" id="statusVer"></span>
+    </div>
+    <div class="spacer"></div>
+    <div class="demo">
+      <span class="tag">Mock</span>
+      <div class="seg" role="group" aria-label="Serverzustand umschalten (Demo)">
+        <button id="btnStopped" class="on">Gestoppt</button>
+        <button id="btnRunning">Läuft</button>
+      </div>
+    </div>
+    <button class="icon-btn" title="Aktualisieren" aria-label="Aktualisieren"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg></button>
+  </header>
+
+  <!-- Main: G2 -->
+  <main class="main">
+    <section class="view" data-view="mods" id="viewMods">
+    <div class="view-head">
+      <h1>Mods</h1>
+      <div class="counts">
+        <span><b>231</b> aktiv</span><span><b>3</b> inaktiv</span><span><b>4</b> Karteileichen</span>
+        <span><b>11,1</b> GB</span>
+      </div>
+    </div>
+    <div class="banner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/></svg>
+      <span><b>Server läuft.</b> Mods lassen sich nur bei gestopptem Server aktivieren, deaktivieren oder löschen — die Liste bleibt sichtbar und durchsuchbar. Zum Ändern erst stoppen.</span>
+    </div>
+
+    <div class="toolbar">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
+        <input id="search" type="search" placeholder="Suchen nach Name oder Dateiname…">
+      </div>
+      <div class="filters" id="filters" role="group" aria-label="Nach Status filtern">
+        <button data-f="all" class="on">Alle</button>
+        <button data-f="active">Aktiv</button>
+        <button data-f="inactive">Inaktiv</button>
+        <button data-f="orphan">Karteileichen</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <div class="tscroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="c-sel"><input type="checkbox" id="selAll" class="lockable" aria-label="Alle auswählen"></th>
+              <th class="c-status sortable" data-k="status" aria-sort="none">Status<span class="arrow"></span></th>
+              <th class="sortable" data-k="name" aria-sort="ascending">Name<span class="arrow"></span></th>
+              <th class="c-ver sortable" data-k="ver" aria-sort="none">Version<span class="arrow"></span></th>
+              <th class="sortable" data-k="author" aria-sort="none">Author<span class="arrow"></span></th>
+              <th class="c-file sortable" data-k="file" aria-sort="none">Dateiname<span class="arrow"></span></th>
+              <th class="c-size sortable" data-k="size" aria-sort="none">Größe<span class="arrow"></span></th>
+              <th class="c-dlc">DLC</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+    </section>
+
+    <section class="view" data-view="settings" id="viewSettings" hidden>
+      <div class="view-head"><h1>Spieleinstellungen</h1></div>
+      <div class="banner">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/></svg>
+        <span><b>Server läuft.</b> Einstellungen lassen sich nur bei gestopptem Server ändern. Zum Ändern erst stoppen.</span>
+      </div>
+      <div class="card2" style="max-width:660px">
+        <form class="settings-form" id="settingsForm" autocomplete="off">
+          <div class="sec">
+            <div class="sec-title">Identität</div>
+            <div class="field"><label>Server-Name (im Spiel)</label><input class="inp" id="setName" value="ccc222"></div>
+            <div class="field"><label>Admin-Passwort <span class="hint2">= Web-Login</span></label>
+              <div class="pw"><input class="inp" id="setAdminPw" type="password" placeholder="•••• gespeichert — zum Ändern neu eingeben"><button type="button" class="eye" data-eye="setAdminPw" aria-label="Anzeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/></svg></button></div></div>
+            <div class="field"><label>Spiel-Passwort <span class="hint2">für Mitspieler</span></label>
+              <div class="pw"><input class="inp" id="setGamePw" type="password" placeholder="•••• gespeichert"><button type="button" class="eye" data-eye="setGamePw" aria-label="Anzeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/></svg></button></div></div>
+          </div>
+
+          <div class="sec">
+            <div class="sec-title">Spielwelt</div>
+            <div class="field"><label>Savegame</label>
+              <select class="inp" id="setSavegame">
+                <option value="1">SAVEGAME 1 — Riverbend Springs · 500.000 $</option>
+                <option value="2" selected>SAVEGAME 2 — NF Marsch 4fach · 1.424.614 $</option>
+                <option value="3">SAVEGAME 3 — leer</option>
+                <option value="4">SAVEGAME 4 — leer</option>
+              </select></div>
+            <p class="hint" id="sgHint"></p>
+            <div class="field"><label>Map</label><select class="inp sg-only" id="setMap"><option>NF Marsch 4fach</option><option>Riverbend Springs</option><option>Hutan Pantai</option><option>Zielonka</option></select></div>
+            <div class="row2 even">
+              <div class="field"><label>Startgeld</label><select class="inp sg-only" id="setMoney"><option>100.000 $</option><option>250.000 $</option><option>500.000 $</option><option>1.000.000 $</option></select></div>
+              <div class="field"><label>Startkredit</label><select class="inp sg-only" id="setLoan"><option>0 $</option><option>100.000 $</option><option>500.000 $</option></select></div>
+            </div>
+            <div class="field"><label>Wirtschaftliche Schwierigkeit</label><select class="inp sg-only" id="setDiff"><option>Easy</option><option>Normal</option><option>Hard</option></select></div>
+          </div>
+
+          <div class="sec">
+            <div class="sec-title">Netzwerk &amp; Zugang</div>
+            <div class="row2 even">
+              <div class="field"><label>Port</label><input class="inp" id="setPort" value="10823" style="font-family:var(--font-mono)"></div>
+              <div class="field"><label>Slots (max. Spieler)</label><select class="inp" id="setSlots"><option>2</option><option>3</option><option selected>4</option><option>6</option><option>8</option><option>12</option><option>16</option></select></div>
+            </div>
+            <div class="field"><label>Sprache</label><select class="inp" id="setLang"><option selected>Deutsch</option><option>English</option><option>Français</option><option>Polski</option><option>Español</option></select></div>
+            <label class="check"><input type="checkbox" id="setCross" checked> Crossplay erlaubt</label>
+          </div>
+
+          <div class="sec">
+            <div class="sec-title">Automatik</div>
+            <div class="field"><label>Auto-Save-Intervall (Minuten)</label><input class="inp" id="setAutosave" value="30" style="max-width:130px;font-family:var(--font-mono)"></div>
+            <div class="field"><label>Web-API-Intervall (Sekunden)</label>
+              <input class="inp" id="setStats" value="31536000" style="max-width:190px;font-family:var(--font-mono)">
+              <span class="hint" id="statsHint" style="margin-top:6px"></span></div>
+            <div class="field"><label>Pause wenn leer</label><select class="inp" id="setPause"><option>Nein</option><option selected>Sofort</option></select></div>
+          </div>
+
+          <div class="editor-foot">
+            <div class="grow"></div>
+            <button type="button" class="btn" id="setReset">Zurücksetzen</button>
+            <button type="button" class="btn primary" id="setSave">Speichern</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="view" data-view="provide" id="viewProvide" hidden>
+      <div class="view-head"><h1>Bereitstellen</h1></div>
+      <div class="tabs" role="tablist">
+        <button class="on" data-tab="hub" role="tab">ModHub-Suche</button>
+        <button data-tab="upload" role="tab">Datei-Upload</button>
+      </div>
+
+      <div class="tabpane" data-tab="hub" role="tabpanel">
+        <div class="banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/></svg>
+          <span><b>Server läuft.</b> Die Suche geht jederzeit, aber „Install on server" nur bei gestopptem Server. Zum Installieren erst stoppen.</span>
+        </div>
+        <div class="search" style="max-width:440px;margin-bottom:16px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
+          <input id="hubSearch" type="search" placeholder="ModHub durchsuchen (Name)…">
+        </div>
+        <div class="hub-grid" id="hubGrid"></div>
+      </div>
+
+      <div class="tabpane" data-tab="upload" role="tabpanel" hidden>
+        <div class="dropzone">
+          <div class="di"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="30" height="30"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 9l5 -5l5 5"/><path d="M12 4l0 12"/></svg></div>
+          <div style="color:var(--ink);font-weight:600;margin-bottom:4px">Mod-Datei hochladen</div>
+          <div style="font-size:13px">Bis 1,71 GB über das Web-Formular — größere Dateien automatisch per FTP/SFTP.</div>
+          <div style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+            <button class="btn primary" id="uPick">Datei wählen…</button>
+            <button class="btn" id="uBig">Beispiel: große Datei (2,4 GB)</button>
+          </div>
+        </div>
+        <div class="uprow" id="uprow">
+          <div class="uh">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 9l5 -5l5 5"/><path d="M12 4l0 12"/></svg>
+            <span class="uf" id="upName"></span><span class="path" id="upPath"></span>
+          </div>
+          <div class="upbar"><div class="b" id="upbar"></div></div>
+        </div>
+        <div class="nofile" id="nofile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0"/><path d="M12 16h.01"/></svg>
+          <div><b>Datei größer als 1,71 GB.</b> Das Web-Formular kann sie nicht hochladen. Richte für große Uploads einen <b>FTP/SFTP-Zugang</b> im Profil ein (Server verwalten → Datei-Zugang).</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" data-view="placeholder" id="viewPlaceholder" hidden>
+      <div class="placeholder">
+        <div class="ph-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><path d="M7 10h3v-3l-3.5 -3.5a6 6 0 0 1 8 8l6 6a2 2 0 0 1 -3 3l-6 -6a6 6 0 0 1 -8 -8l3.5 3.5"/></svg></div>
+        <h2 id="phTitle">Ansicht</h2>
+        <p>Diese Ansicht ist im Mockup noch nicht ausgearbeitet.</p>
+      </div>
+    </section>
+
+    <div class="discon">
+      <div class="card">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><path d="M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2"/><path d="M9 12h12l-3 -3"/><path d="M18 15l3 -3"/></svg></div>
+        <h2>Nicht verbunden</h2>
+        <p>Die Verbindung zu <b>ccc222</b> wurde getrennt. Verbinde dich erneut oder wähle im Server-Menü einen anderen Server.</p>
+        <button class="btn primary" id="btnReconnect">Mit ccc222 verbinden</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Action bar -->
+  <div class="actionbar">
+    <span class="selinfo"><b id="selCount">0</b> ausgewählt</span>
+    <span class="lockhint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/></svg>Bei laufendem Server gesperrt</span>
+    <div class="grow"></div>
+    <button class="btn lockable" id="bDeact" disabled>Deaktivieren</button>
+    <button class="btn primary lockable" id="bAct" disabled>Aktivieren</button>
+    <button class="btn danger lockable" id="bDel" disabled>Löschen…</button>
+  </div>
+
+  <!-- G1: Profilverwaltung -->
+  <div class="manage" id="manage" hidden>
+    <header class="manage-top">
+      <h2>Server verwalten</h2>
+      <button class="icon-btn" id="manageClose" title="Schließen" aria-label="Schließen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></svg></button>
+    </header>
+    <div class="manage-scroll">
+      <div class="manage-body">
+        <aside class="plist">
+          <div class="plist-head">Profile</div>
+          <div id="profileList"></div>
+          <button class="btn newprofile" id="newProfile">+ Neues Profil</button>
+        </aside>
+
+        <section class="peditor">
+          <div class="card2">
+            <h3 id="editTitle">Profil bearbeiten</h3>
+            <p class="lead">Zugangsdaten gehen in den OS-Credential-Store, nie in eine Datei der App.</p>
+
+            <form id="pform" autocomplete="off">
+              <div class="sec">
+                <div class="sec-title">Web-Zugang</div>
+                <div class="field">
+                  <label>Profilname <span class="req">*</span></label>
+                  <input class="inp" id="pfName" placeholder="z. B. Mein Server">
+                </div>
+                <div class="field">
+                  <label>Adresse <span class="req">*</span></label>
+                  <div class="row2">
+                    <select class="inp" id="pfProto"><option value="http">http://</option><option value="https">https://</option></select>
+                    <input class="inp" id="pfAddr" placeholder="host:port  ·  z. B. 192.0.2.10:7999" style="font-family:var(--font-mono)">
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Benutzer <span class="req">*</span></label>
+                  <input class="inp" id="pfUser" placeholder="admin">
+                </div>
+                <div class="field">
+                  <label>Passwort <span class="req" id="pwReq">*</span></label>
+                  <div class="pw">
+                    <input class="inp" id="pfPass" type="password" placeholder="Passwort eingeben">
+                    <button type="button" class="eye" data-eye="pfPass" title="Anzeigen" aria-label="Passwort anzeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/></svg></button>
+                  </div>
+                </div>
+                <label class="check"><input type="checkbox" id="pfCert"> Ungültiges/selbstsigniertes Zertifikat akzeptieren <span style="color:var(--muted);font-size:11.5px">(gemietete Server)</span></label>
+              </div>
+
+              <div class="sec">
+                <div class="sec-title">
+                  Datei-Zugang (FTP/SFTP)
+                  <label class="switchrow" style="margin-left:auto"><input type="checkbox" id="pfFtp"> einrichten</label>
+                </div>
+                <p class="lead" style="margin:-4px 0 0">Für Uploads über 1,71 GB und Dateizugriff (Savegames, Mod-Sets).</p>
+                <div class="ftp-body" id="ftpBody" hidden>
+                  <div class="field">
+                    <div class="row2 even">
+                      <div><label>Protokoll</label><select class="inp" id="pfFtpProto"><option value="ftp">FTP</option><option value="sftp">SFTP</option></select></div>
+                      <div><label>Host <span class="req">*</span></label><input class="inp" id="pfFtpHost" placeholder="host" style="font-family:var(--font-mono)"></div>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <div class="row2 even">
+                      <div><label>Port <span class="req">*</span></label><input class="inp" id="pfFtpPort" placeholder="21 / 22" style="font-family:var(--font-mono)"></div>
+                      <div><label>Benutzer <span class="req">*</span></label><input class="inp" id="pfFtpUser" placeholder="Benutzer"></div>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>Passwort <span class="req">*</span></label>
+                    <div class="pw">
+                      <input class="inp" id="pfFtpPass" type="password" placeholder="Passwort eingeben">
+                      <button type="button" class="eye" data-eye="pfFtpPass" title="Anzeigen" aria-label="Passwort anzeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/></svg></button>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>Mods-Pfad auf dem Server <span class="req">*</span></label>
+                    <input class="inp" id="pfModsPath" placeholder="/config/…/mods" style="font-family:var(--font-mono)">
+                  </div>
+                </div>
+              </div>
+
+              <div class="editor-foot">
+                <button type="button" class="btn danger" id="pDelete">Profil löschen</button>
+                <div class="grow"></div>
+                <button type="button" class="btn" id="pConnect">Verbinden</button>
+                <button type="button" class="btn" id="pCancel">Abbrechen</button>
+                <button type="button" class="btn primary" id="pSave" disabled>Speichern</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="confirm" hidden>
+    <div class="modal-card">
+      <h3 id="cfTitle"></h3>
+      <p id="cfBody"></p>
+      <div class="modal-foot">
+        <button class="btn" id="cfCancel">Abbrechen</button>
+        <button class="btn primary" id="cfOk">Bestätigen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+  const MODS = [
+    {name:"Dashboard Live Vanilla Vehicles", ver:"1.0.0.0", author:"—", file:"FS25_DashboardLive_VanillaVehicles.zip", size:4.2, dlc:false, status:"active"},
+    {name:"NORTH FRISIAN MARCH 4X", ver:"2.1.0.0", author:"NF Modding", file:"FS25_NFMarsch4fach.zip", size:812, dlc:false, status:"active"},
+    {name:"Krone BigX 1180 Pack", ver:"1.0.3.0", author:"WobbyTec", file:"FS25_BigXPack.zip", size:66.1, dlc:false, status:"active"},
+    {name:"AutoDrive", ver:"3.0.1.2", author:"AutoDrive Team", file:"FS25_AutoDrive.zip", size:18.4, dlc:false, status:"active"},
+    {name:"Courseplay", ver:"3.2.1.4", author:"Courseplay Team", file:"FS25_Courseplay.zip", size:22.0, dlc:false, status:"active"},
+    {name:"Fendt 1100 Vario MT – Hirschfeld Edition", ver:"1.0.0.6", author:"HIP Marco", file:"FS25_Hirschfeld_1100_Vario_MT_by_HIP_Marco.zip", size:25.4, dlc:false, status:"active"},
+    {name:"New Holland CR11 Gold Edition", ver:"1.0.0.0", author:"GIANTS Software", file:"extraContentNewHollandCR11.dlc", size:210, dlc:true, status:"inactive"},
+    {name:"Realistic Livestock – Ritter version", ver:"1.1.7.1", author:"Ritter", file:"FS25_RealisticLivestockRM.zip", size:14.8, dlc:false, status:"inactive"},
+    {name:"Crusher", ver:"2.1.0.0", author:"—", file:"FS25_crusher.zip", size:9.3, dlc:false, status:"inactive", issue:"Fehlende Abhängigkeiten (im Log)"},
+    {name:"Fertilizer Production Pack", ver:"1.0.0.3", author:"—", file:"FS25_FertilizerProductionPack.zip", size:12.1, dlc:false, status:"inactive"},
+    {name:"annaburgerMilk (eddited)", ver:"1.0.0.0", author:"—", file:"FS25_annaburgerMilk_eddited.zip", size:0, dlc:false, status:"orphan"},
+    {name:"System dryingFermenter", ver:"1.0.0.0", author:"—", file:"FS25_System_dryingFermenter.zip", size:0, dlc:false, status:"orphan"},
+  ];
+  const STATUS = {
+    active:{label:"Aktiv", cls:"active"},
+    inactive:{label:"Inaktiv", cls:"inactive"},
+    orphan:{label:"Karteileiche", cls:"orphan"},
+  };
+  const fmtSize = s => s>=1000 ? (s/1024).toFixed(2)+" GB" : s>0 ? s.toFixed(1)+" MB" : "—";
+
+  const app=document.getElementById('app'), rowsEl=document.getElementById('rows');
+  let filter="all", query="", sortKey="name", sortDir="asc", online=false;
+  const sel=new Set();
+
+  function visible(){
+    let list=MODS.filter(m=>(filter==="all"||m.status===filter)
+      && (m.name.toLowerCase().includes(query)||m.file.toLowerCase().includes(query)));
+    const order={active:0,inactive:1,orphan:2};
+    const cmp=(a,b)=>{
+      switch(sortKey){
+        case "size": return a.size-b.size;
+        case "status": return (order[a.status]-order[b.status])||a.name.localeCompare(b.name);
+        case "ver": return a.ver.localeCompare(b.ver,undefined,{numeric:true});
+        case "author": return a.author.localeCompare(b.author);
+        case "file": return a.file.localeCompare(b.file);
+        default: return a.name.localeCompare(b.name);
+      }
+    };
+    list.sort((a,b)=> sortDir==="asc"?cmp(a,b):-cmp(a,b));
+    return list;
+  }
+  function render(){
+    const list=visible();
+    rowsEl.innerHTML = list.map(m=>{
+      const st=STATUS[m.status];
+      const checked = sel.has(m.file) ? "checked":"";
+      const issue = m.issue ? `<div class="mod-issue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0"/><path d="M12 16h.01"/></svg>${m.issue}</div>`:"";
+      return `<tr class="${checked?'sel':''}" data-file="${m.file}">
+        <td class="c-sel"><input type="checkbox" class="rowchk lockable" ${checked} aria-label="${m.name} auswählen"></td>
+        <td><span class="badge ${st.cls}"><span class="bd"></span>${st.label}</span></td>
+        <td><div class="mod-name">${m.name}</div>${issue}</td>
+        <td class="c-ver">${m.ver}</td>
+        <td>${m.author==="—"?'<span class="muted-dash">—</span>':m.author}</td>
+        <td class="c-file">${m.file}</td>
+        <td class="c-size">${fmtSize(m.size)}</td>
+        <td class="c-dlc">${m.dlc?'<span class="dlc-tag">DLC</span>':'<span class="muted-dash">–</span>'}</td>
+      </tr>`;
+    }).join("");
+    syncActions();
+    updateHeaders();
+  }
+  function updateHeaders(){
+    document.querySelectorAll('th.sortable').forEach(th=>{
+      const active=th.dataset.k===sortKey;
+      th.classList.toggle('sorted',active);
+      th.querySelector('.arrow').textContent=active?(sortDir==="asc"?"▲":"▼"):"";
+      th.setAttribute('aria-sort',active?(sortDir==="asc"?"ascending":"descending"):"none");
+    });
+  }
+  function syncActions(){
+    document.getElementById('selCount').textContent=sel.size;
+    const none=sel.size===0;
+    document.getElementById('bAct').disabled=none;
+    document.getElementById('bDeact').disabled=none;
+    document.getElementById('bDel').disabled=none;
+  }
+  function setOnline(v){
+    online=v;
+    app.classList.toggle('is-online',v);
+    app.classList.toggle('is-offline',!v);
+    document.getElementById('btnRunning').classList.toggle('on',v);
+    document.getElementById('btnStopped').classList.toggle('on',!v);
+    const s=document.getElementById('status');
+    s.className='status '+(v?'online':'offline');
+    document.getElementById('statusText').textContent=v?'Online':'Offline';
+    document.getElementById('statusVer').textContent=v?'1.19.0.0':'';
+    document.getElementById('pickDot').style.background=v?'var(--ok)':'var(--neutral)';
+    document.getElementById('menuDot').style.background=v?'var(--ok)':'var(--neutral)';
+    document.getElementById('menuState').textContent=v?'läuft':'gestoppt';
+    updateControls();
+    if(v){sel.clear();render();}
+  }
+  function updateControls(){
+    const dis=app.classList.contains('disconnected');
+    document.getElementById('btnStart').style.display=(!dis&&!online)?'':'none';
+    document.getElementById('btnRestart').style.display=(!dis&&online)?'':'none';
+    document.getElementById('btnStop').style.display=(!dis&&online)?'':'none';
+  }
+
+  const wrap=document.getElementById('serverWrap'), pick=document.getElementById('serverPick');
+  pick.addEventListener('click',e=>{e.stopPropagation();
+    const o=wrap.classList.toggle('open'); pick.setAttribute('aria-expanded',o);});
+  document.addEventListener('click',e=>{if(!wrap.contains(e.target))wrap.classList.remove('open');});
+  function setConnected(c){
+    app.classList.toggle('disconnected',!c);
+    const s=document.getElementById('status');
+    if(!c){
+      s.className='status disc';
+      document.getElementById('statusText').textContent='Nicht verbunden';
+      document.getElementById('statusVer').textContent='';
+      document.getElementById('pickDot').style.cssText='background:transparent;border:2px solid var(--muted)';
+      document.getElementById('menuDot').style.cssText='background:transparent;border:2px solid var(--muted)';
+      document.getElementById('menuState').textContent='getrennt';
+    }else{
+      document.getElementById('pickDot').style.border='none';
+      document.getElementById('menuDot').style.border='none';
+    }
+    updateControls();
+  }
+  document.getElementById('miDisconnect').addEventListener('click',()=>{wrap.classList.remove('open');setConnected(false);});
+  document.getElementById('btnReconnect').addEventListener('click',()=>{setConnected(true);setOnline(false);});
+  document.querySelectorAll('[data-switch]').forEach(b=>b.addEventListener('click',()=>{wrap.classList.remove('open');}));
+
+  rowsEl.addEventListener('change',e=>{
+    if(!e.target.classList.contains('rowchk'))return;
+    const f=e.target.closest('tr').dataset.file;
+    e.target.checked?sel.add(f):sel.delete(f);
+    e.target.closest('tr').classList.toggle('sel',e.target.checked);
+    syncActions();
+  });
+  document.getElementById('selAll').addEventListener('change',e=>{
+    const vis=visible();
+    if(e.target.checked)vis.forEach(m=>sel.add(m.file)); else vis.forEach(m=>sel.delete(m.file));
+    render();
+  });
+  document.getElementById('search').addEventListener('input',e=>{query=e.target.value.toLowerCase().trim();render();});
+  document.querySelector('thead').addEventListener('click',e=>{
+    const th=e.target.closest('th.sortable'); if(!th)return;
+    const k=th.dataset.k;
+    if(k===sortKey) sortDir=sortDir==="asc"?"desc":"asc";
+    else{ sortKey=k; sortDir=(k==="size")?"desc":"asc"; }
+    render();
+  });
+  document.getElementById('filters').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b)return;
+    filter=b.dataset.f;
+    [...e.currentTarget.children].forEach(c=>c.classList.toggle('on',c===b));
+    render();
+  });
+  document.getElementById('btnStopped').addEventListener('click',()=>setOnline(false));
+  document.getElementById('btnRunning').addEventListener('click',()=>setOnline(true));
+
+  // Serversteuerung im Kopf (mit Bestätigung)
+  let cfAction=null;
+  function confirmDialog(title,body,okLabel,danger,fn){
+    document.getElementById('cfTitle').textContent=title;
+    document.getElementById('cfBody').textContent=body;
+    const ok=document.getElementById('cfOk'); ok.textContent=okLabel; ok.className='btn '+(danger?'danger':'primary');
+    cfAction=fn; document.getElementById('confirm').hidden=false;
+  }
+  document.getElementById('cfCancel').addEventListener('click',()=>document.getElementById('confirm').hidden=true);
+  document.getElementById('confirm').addEventListener('click',e=>{if(e.target.id==='confirm')e.currentTarget.hidden=true;});
+  document.getElementById('cfOk').addEventListener('click',()=>{document.getElementById('confirm').hidden=true; const f=cfAction; cfAction=null; if(f)f();});
+  document.getElementById('btnStart').addEventListener('click',()=>confirmDialog(
+    'Server starten?','Der Server wird gestartet. Die aktuellen Einstellungen werden dabei unverändert übernommen.','Starten',false,
+    ()=>{setOnline(true);toast('Server gestartet — Game server started');}));
+  document.getElementById('btnStop').addEventListener('click',()=>confirmDialog(
+    'Server stoppen?','Der Server wird gestoppt — verbundene Mitspieler werden getrennt.','Stoppen',true,
+    ()=>{setOnline(false);toast('Server gestoppt — Game server stopped');}));
+  document.getElementById('btnRestart').addEventListener('click',()=>confirmDialog(
+    'Server neu starten?','Der Server wird neu gestartet — verbundene Mitspieler werden getrennt.','Neu starten',true,
+    ()=>{toast('Server neu gestartet — Game server started');}));
+  document.getElementById('bDel').addEventListener('click',()=>{
+    alert('Mockup: „Mod löschen" — hier käme der Bestätigungsdialog:\n\n„Die Mod-Datei wird vom Server gelöscht." → Bestätigen / Abbrechen');
+  });
+
+  // ---------- G1: Profilverwaltung ----------
+  let PROFILES=[
+    {id:1,name:"ccc222",proto:"http",addr:"192.0.2.10:7999",user:"admin",hasPass:true,cert:false,ftp:false,connected:true},
+    {id:2,name:"Hetzner-Test",proto:"http",addr:"49.12.144.20:7999",user:"admin",hasPass:true,cert:false,ftp:false,connected:false},
+    {id:3,name:"GPORTAL Miete",proto:"https",addr:"fs25.g-portal.com:8443",user:"admin",hasPass:true,cert:false,
+      ftp:true,ftpProto:"sftp",ftpHost:"fs25.g-portal.com",ftpPort:"22",ftpUser:"srv48213",hasFtpPass:true,ftpModsPath:"/gameservers/fs25/mods",connected:false},
+  ];
+  let editingId=null, toastT;
+  const $=id=>document.getElementById(id), manageEl=$('manage');
+  const nv=id=>$(id).value.trim()!=='';
+  function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),1900);}
+
+  function openManage(){renderProfiles(); PROFILES[0]?loadProfile(PROFILES[0].id):newProfileForm(); manageEl.hidden=false;}
+  function closeManage(){manageEl.hidden=true;}
+  function renderProfiles(){
+    $('profileList').innerHTML=PROFILES.map(p=>{
+      const dot=p.connected?'<span class="m-dot" style="background:var(--ok)"></span>'
+        :'<span class="m-dot" style="background:transparent;border:2px solid var(--muted)"></span>';
+      return `<button class="pcard ${p.id===editingId?'active':''}" data-id="${p.id}">
+        <span class="pn">${dot}${p.name}</span>
+        <span class="pa">${p.proto}://${p.addr}</span>
+        <span class="ps">${p.connected?'verbunden':'nicht verbunden'}${p.ftp?' · FTP/SFTP':''}</span>
+      </button>`;
+    }).join("");
+  }
+  function toggleFtp(){$('ftpBody').hidden=!$('pfFtp').checked; validate();}
+  function loadProfile(id){
+    const p=PROFILES.find(x=>x.id===id); if(!p)return; editingId=id;
+    $('editTitle').textContent='Profil bearbeiten';
+    $('pfName').value=p.name; $('pfProto').value=p.proto; $('pfAddr').value=p.addr; $('pfUser').value=p.user;
+    $('pfPass').value=''; $('pfPass').placeholder=p.hasPass?'•••• gespeichert — zum Ändern neu eingeben':'Passwort eingeben';
+    $('pfCert').checked=!!p.cert; $('pfFtp').checked=!!p.ftp; toggleFtp();
+    $('pfFtpProto').value=p.ftpProto||'ftp'; $('pfFtpHost').value=p.ftpHost||''; $('pfFtpPort').value=p.ftpPort||'';
+    $('pfFtpUser').value=p.ftpUser||''; $('pfFtpPass').value=''; $('pfFtpPass').placeholder=p.hasFtpPass?'•••• gespeichert':'Passwort eingeben';
+    $('pfModsPath').value=p.ftpModsPath||'';
+    $('pDelete').style.display=''; $('pConnect').style.display=p.connected?'none':'';
+    renderProfiles(); validate();
+  }
+  function newProfileForm(){
+    editingId=null; $('editTitle').textContent='Neues Profil';
+    ['pfName','pfAddr','pfUser','pfPass','pfFtpHost','pfFtpPort','pfFtpUser','pfFtpPass','pfModsPath'].forEach(i=>$(i).value='');
+    $('pfProto').value='http'; $('pfPass').placeholder='Passwort eingeben'; $('pfFtpPass').placeholder='Passwort eingeben';
+    $('pfCert').checked=false; $('pfFtp').checked=false; toggleFtp();
+    $('pDelete').style.display='none'; $('pConnect').style.display='none';
+    renderProfiles(); validate();
+  }
+  function validate(){
+    const p=editingId?PROFILES.find(x=>x.id===editingId):null;
+    let ok=nv('pfName')&&nv('pfAddr')&&nv('pfUser')&&(nv('pfPass')||(p&&p.hasPass));
+    if($('pfFtp').checked)
+      ok=ok&&nv('pfFtpHost')&&nv('pfFtpPort')&&nv('pfFtpUser')&&nv('pfModsPath')&&(nv('pfFtpPass')||(p&&p.hasFtpPass));
+    $('pSave').disabled=!ok;
+  }
+  function saveProfile(){
+    const d={name:$('pfName').value.trim(),proto:$('pfProto').value,addr:$('pfAddr').value.trim(),user:$('pfUser').value.trim(),
+      cert:$('pfCert').checked,ftp:$('pfFtp').checked,ftpProto:$('pfFtpProto').value,ftpHost:$('pfFtpHost').value.trim(),
+      ftpPort:$('pfFtpPort').value.trim(),ftpUser:$('pfFtpUser').value.trim(),ftpModsPath:$('pfModsPath').value.trim()};
+    if(editingId){const p=PROFILES.find(x=>x.id===editingId);Object.assign(p,d);if(nv('pfPass'))p.hasPass=true;if(nv('pfFtpPass'))p.hasFtpPass=true;}
+    else{editingId=Date.now();PROFILES.push({id:editingId,connected:false,hasPass:true,hasFtpPass:d.ftp,...d});loadProfile(editingId);}
+    renderProfiles(); toast('Profil gespeichert');
+  }
+  function delProfile(){
+    if(editingId==null)return;
+    PROFILES=PROFILES.filter(x=>x.id!==editingId);
+    PROFILES[0]?loadProfile(PROFILES[0].id):newProfileForm(); toast('Profil gelöscht');
+  }
+  function connectProfile(id){
+    PROFILES.forEach(p=>p.connected=(p.id===id));
+    const p=PROFILES.find(x=>x.id===id);
+    $('pickName').textContent=p.name; $('menuCurName').textContent=p.name;
+    closeManage(); setConnected(true); setOnline(false); toast('Verbunden mit '+p.name);
+  }
+
+  $('miManage').addEventListener('click',()=>{wrap.classList.remove('open');openManage();});
+  $('manageClose').addEventListener('click',closeManage);
+  $('pCancel').addEventListener('click',closeManage);
+  $('newProfile').addEventListener('click',newProfileForm);
+  $('pfFtp').addEventListener('change',toggleFtp);
+  $('pform').addEventListener('input',validate);
+  $('pSave').addEventListener('click',saveProfile);
+  $('pDelete').addEventListener('click',delProfile);
+  $('pConnect').addEventListener('click',()=>{if(editingId)connectProfile(editingId);});
+  $('profileList').addEventListener('click',e=>{const c=e.target.closest('.pcard');if(c)loadProfile(+c.dataset.id);});
+  document.querySelectorAll('.eye').forEach(b=>b.addEventListener('click',()=>{
+    const inp=$(b.dataset.eye); inp.type=inp.type==='password'?'text':'password';
+  }));
+
+  // ---------- View-Umschaltung + G6 ----------
+  function showView(v,label){
+    document.querySelectorAll('.view').forEach(s=>s.hidden=(s.dataset.view!==v));
+    app.classList.toggle('view-mods',v==='mods');
+    if(v==='placeholder'&&label)$('phTitle').textContent=label;
+  }
+  document.querySelector('nav').addEventListener('click',e=>{
+    const b=e.target.closest('.nav-item'); if(!b)return;
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+    b.classList.add('active');
+    showView(b.dataset.view, b.textContent.trim());
+  });
+  function setgSync(){
+    const empty=/leer/i.test($('setSavegame').selectedOptions[0].textContent);
+    document.querySelectorAll('#viewSettings .sg-only').forEach(el=>el.disabled=!empty);
+    $('sgHint').textContent=empty
+      ? 'Leerer Slot: Map, Startgeld, Kredit und Schwierigkeit werden für ein neues Spiel gesetzt.'
+      : 'Bestehender Spielstand: Map, Startgeld, Kredit und Schwierigkeit sind fest und nicht änderbar.';
+  }
+  function statsSync(){
+    const s=parseInt($('setStats').value,10)||0; let t;
+    if(s>=86400){const d=Math.round(s/86400); t='≈ '+d+' '+(d===1?'Tag':'Tage')+(d>=300?' — Feed praktisch aus':'');}
+    else if(s>=3600) t='≈ '+Math.round(s/3600)+' h';
+    else if(s>=60) t='≈ '+Math.round(s/60)+' min';
+    else t=s+' s';
+    $('statsHint').textContent=t;
+  }
+  $('setSavegame').addEventListener('change',setgSync);
+  $('setStats').addEventListener('input',statsSync);
+  $('setSave').addEventListener('click',()=>toast('Einstellungen gespeichert'));
+  $('setReset').addEventListener('click',()=>toast('Zurückgesetzt'));
+
+  // ---------- G3: Bereitstellen ----------
+  const HUB=[
+    {id:366506,name:"Weigh Station Pack",author:"[Weekend Farmers] Westpfalz Modding",rating:4.5,file:"FS25_weighingStations18m.zip",size:"3,21 MB"},
+    {id:363831,name:"Lizard MultiRoll Pack",author:"Lizard Modding",rating:4.2,file:"FS25_LizardMultiRollPack.zip",size:"12,4 MB"},
+    {id:367521,name:"Palaz RR2C 18L Trailer",author:"Palaz",rating:3.9,file:"FS25_PalazRR2C18LTrailer.zip",size:"8,7 MB"},
+    {id:364182,name:"Treffler TS 1220",author:"Treffler Official",rating:4.8,file:"FS25_treffler_ts1220.zip",size:"21,0 MB"},
+    {id:365205,name:"High Brick Wall",author:"BuildCraft",rating:4.0,file:"FS25_highBrickWall.zip",size:"1,9 MB"},
+    {id:366449,name:"Ventilation Ducts Deco Pack",author:"DecoWorks",rating:4.1,file:"FS25_VentilationDuctsDecoPack.zip",size:"5,3 MB"},
+  ];
+  function renderHub(){
+    const q=($('hubSearch').value||'').toLowerCase().trim();
+    const list=HUB.filter(h=>!q||h.name.toLowerCase().includes(q)||h.file.toLowerCase().includes(q));
+    $('hubGrid').innerHTML=list.map(h=>`
+      <div class="hubcard" data-id="${h.id}">
+        <div class="hc-head">
+          <div class="thumb">${h.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}</div>
+          <div class="meta">
+            <div class="hn">${h.name}</div>
+            <div class="ha">von ${h.author}</div>
+            <div class="hr"><span class="star">★</span>${h.rating.toFixed(1)} · ${h.size}</div>
+            <div class="file">${h.file}</div>
+          </div>
+        </div>
+        <div class="foot">
+          <a class="btn hublink" href="https://www.farming-simulator.com/mod.php?mod_id=${h.id}" target="_blank" rel="noopener" title="Auf der ModHub-Website ansehen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/></svg>
+            ModHub
+          </a>
+          <div class="progress"><div class="bar"></div></div>
+          <button class="btn primary install lockable">Install on server</button>
+        </div>
+      </div>`).join('');
+  }
+  $('hubSearch').addEventListener('input',renderHub);
+  $('hubGrid').addEventListener('click',e=>{
+    const b=e.target.closest('.install'); if(!b)return;
+    const card=b.closest('.hubcard'); card.classList.add('busy');
+    const bar=card.querySelector('.bar'); let p=0;
+    const t=setInterval(()=>{p+=Math.random()*18+6;
+      if(p>=100){p=100;clearInterval(t);
+        setTimeout(()=>{card.classList.remove('busy');bar.style.width='0';
+          toast(card.querySelector('.hn').textContent+' auf dem Server installiert');},250);}
+      bar.style.width=p+'%';},280);
+  });
+  document.querySelector('.tabs').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b)return;
+    document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));
+    document.querySelectorAll('.tabpane').forEach(p=>p.hidden=(p.dataset.tab!==b.dataset.tab));
+  });
+  function simulateUpload(name,big){
+    if(big){$('nofile').classList.add('show');$('uprow').classList.remove('show');return;}
+    $('nofile').classList.remove('show');
+    $('upName').textContent=name; $('upPath').textContent='Web-Formular (≤ 1,71 GB)';
+    $('uprow').classList.add('show');
+    const bar=$('upbar'); let p=0; bar.style.width='0';
+    const t=setInterval(()=>{p+=Math.random()*14+8;
+      if(p>=100){p=100;clearInterval(t);
+        setTimeout(()=>{$('uprow').classList.remove('show');toast(name+' hochgeladen — erscheint in der Mod-Liste');},350);}
+      bar.style.width=p+'%';},240);
+  }
+  $('uPick').addEventListener('click',()=>simulateUpload('FS25_MeinEigenerMod.zip',false));
+  $('uBig').addEventListener('click',()=>simulateUpload('FS25_GrossesMapPack.zip',true));
+
+  showView('mods'); setgSync(); statsSync(); renderHub();
+  setOnline(false);
+  render();
+</script>

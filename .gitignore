@@ -1,0 +1,22 @@
+# Rust
+/target
+**/target
+
+# Node / Frontend (Tauri-Oberfläche, folgt)
+node_modules/
+dist/
+.parcel-cache/
+
+# Tauri
+src-tauri/target/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Zugangsdaten gehören NIEMALS ins Repo (Q1) — nur in den OS-Credential-Store.
+*.secret
+credentials.*
