@@ -344,9 +344,13 @@ ModMatcher-PH Kap. 5.
 
 ## 6. Sitzung, Formulare und Versionstoleranz
 
-- **Anmeldung** (Kap. 7.3 LH): POST `index.html?lang=…` mit `username`+`password`+`login`;
-  Sitzung über `Set-Cookie`; **kein CSRF-Token, keine versteckten Felder** → kein Sonderaufwand.
-  Abmelden über `index.html?logout=true`.
+- **Anmeldung** (Kap. 7.3 LH): GET der Login-Seite (setzt die erste `SessionID`, liefert die
+  Formular-`action` mit `?lang=…`) → POST `index.html?lang=…` mit `username`+`password`+
+  `login=Login`; Sitzung über `Set-Cookie`; **kein CSRF-Token, keine versteckten Felder** →
+  kein Sonderaufwand. Abmelden über `index.html?logout=true`. **Erfolg nicht an der POST-Antwort
+  ablesen** — die rendert noch die Login-Seite (JS/Meta-Reload, dem ein HTTP-Client nicht folgt);
+  stattdessen an einem **frischen GET** danach prüfen (Login-Formular weg = angemeldet).
+  HTTP-Eigenheiten des Panels dabei zwingend beachten → **6.2**.
 - **Formular-Umlauf beim Start** (Kap. 7.3 LH): `start`/`save_settings` lesen zuerst das
   vollständige `configuration`-Formular, senden **alle** Felder unverändert zurück und ergänzen
   nur den Absende-Knopf. `admin_password`/`game_password` laufen dabei als Klartextfelder durch
@@ -390,6 +394,30 @@ Der konkrete Prüfmaßstab für Prinzip 2 (Kap. 4.1) und den Formular-Abgleich-T
 > (stattdessen `stop_server`/`restart_server`) und die Mod-Checkboxen (Kap. 9.1). Das ist
 > **erwartet** — die Prüfung darf es nicht als `FormMismatch` werten. Der Abgleich erfolgt daher
 > **je Zustand** gegen die passende Spalte.
+
+### 6.2 HTTP-Eigenheiten des FS-Panels (am lebenden Server verifiziert)
+
+Das Panel (GIANTS-eigener HTTP-Server) weicht in einem Punkt hart von üblichem HTTP-Verhalten
+ab. Der kostete in der Umsetzung viel Fehlersuche — daher hier festgehalten:
+
+- **`Cookie`-Header case-sensitiv (die eigentliche Falle).** Der Server erkennt den
+  Sitzungs-Cookie **nur** bei exakt `Cookie:` (großes C). Kleingeschriebene Header-Namen
+  (`cookie:`) — wie sie hyper/reqwest per Default schreibt — werden **ignoriert**; jede Anfrage
+  wirkt dann wie eine neue, nicht angemeldete Sitzung, und der Login greift nie. Umsetzung in
+  Rust: `reqwest::ClientBuilder::http1_title_case_headers()` (schreibt `Cookie`, `Content-Type`
+  … in Title-Case). *Verifiziert:* mit `Cookie:` behält der Server die `SessionID` bei, mit
+  `cookie:` vergibt er bei jeder Antwort eine neue.
+- **Cookie selbst führen, nicht pinnen.** Der Server schickt in jeder Antwort ein `Set-Cookie`.
+  Solange der Cookie (dank Title-Case) erkannt wird, bleibt die `SessionID` **stabil**
+  (verifiziert). Ob der Server sie beim Login wechselt (Session-Fixation-Schutz), ließ sich
+  nicht sauber isolieren — die Bibliothek **folgt** dem Cookie deshalb nach jeder Antwort
+  (übernimmt die ID aus `Set-Cookie`) statt eine feste ID zu pinnen; das ist in beiden Fällen
+  robust. reqwests eingebauter Cookie-Speicher wird **nicht** genutzt.
+- **Kein CSRF, kein Passwort-Hashing, keine IP-Bindung** (alle verifiziert): Der Login ist ein
+  reiner Klartext-Formular-POST; das JS auf der Seite hasht nichts. Auth hängt am Cookie, nicht
+  an der Client-IP (ein GET ohne gültigen Cookie ist stets nicht angemeldet). Ein `User-Agent`
+  ist für die Sitzung **nicht** erforderlich (verifiziert) — die Bibliothek setzt trotzdem einen
+  zur sauberen Client-Kennzeichnung.
 
 ---
 
