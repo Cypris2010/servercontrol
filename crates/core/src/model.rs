@@ -125,6 +125,34 @@ pub struct SettingsOptions {
     pub pause_game_if_empty: Vec<FieldOption>,
 }
 
+/// Eine Log-Quelle des Servers: Typ (Game/Server/Webserver) mit seinen Logdateien (MZ5).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogSource {
+    /// Server-Code des Log-Typs (0=Server, 1=Webserver, 3=Game).
+    pub log_type: u8,
+    pub type_name: String,
+    /// Logdateien dieses Typs, neueste zuerst.
+    pub files: Vec<String>,
+}
+
+/// Übersicht der verfügbaren Logs samt aktueller `epoch` (Kennung für den Live-Log-Abruf).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LogListing {
+    pub epoch: u64,
+    pub sources: Vec<LogSource>,
+}
+
+/// Ein inkrementell gelesener Log-Abschnitt (`tail -f` über HTTP, MZ5 / Kap. 7.4 LH).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogChunk {
+    /// Neu hinzugekommener Text (aus base64 dekodiert).
+    pub content: String,
+    /// Nächste Byte-Position — beim nächsten Abruf als `offset` verwenden.
+    pub end_offset: u64,
+    /// Wird das Log gerade weitergeschrieben (Server läuft)?
+    pub active: bool,
+}
+
 /// Laufzeit-Kontext für lange Operationen: Abbruch + Fortschritt (Pflichtenheft 4.2).
 ///
 /// Platzhalter — wird um `CancellationToken` und eine `ProgressSink` erweitert.

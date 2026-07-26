@@ -27,8 +27,8 @@ use session::Session;
 
 pub use error::Error;
 pub use model::{
-    Difficulty, FieldOption, GameSettings, ModStatus, OpCtx, PauseIfEmpty, Progress, ServerMod,
-    ServerState, SettingsOptions,
+    Difficulty, FieldOption, GameSettings, LogChunk, LogListing, LogSource, ModStatus, OpCtx,
+    PauseIfEmpty, Progress, ServerMod, ServerState, SettingsOptions,
 };
 pub use profile::{FileAccess, FileProtocol, ServerProfile};
 pub use secret::Secret;
@@ -76,6 +76,26 @@ impl ServerControl {
     /// Aktueller Laufzeitzustand (online/offline + Spielversion).
     pub async fn state(&self) -> Result<ServerState> {
         self.session.state().await
+    }
+
+    // --- Logs (F7 / MZ5) ---
+
+    /// Verfügbare Logs (Typen + Dateien) und die aktuelle `epoch` lesen.
+    pub async fn list_logs(&self) -> Result<LogListing> {
+        self.session.list_logs().await
+    }
+
+    /// Log inkrementell ab `offset` lesen (`tail -f` über HTTP). `epoch` aus [`Self::list_logs`].
+    pub async fn read_log(
+        &self,
+        log_type: u8,
+        log_file: &str,
+        offset: u64,
+        epoch: u64,
+    ) -> Result<LogChunk> {
+        self.session
+            .read_log(log_type, log_file, offset, epoch)
+            .await
     }
 
     // --- Mods (F3/F4) ---

@@ -28,6 +28,8 @@ keyring = { version = "3", default-features = false, features = [
 ] }
 # Warten auf Zustandswechsel (Polling) + Datei lesen fürs Hochladen. reqwest bringt tokio mit.
 tokio = { version = "1", features = ["time", "fs"] }
+# Log-Inhalt kommt base64-kodiert vom Live-Log-Endpunkt (MZ5).
+base64 = "0.22"
 
 [dev-dependencies]
 # Nur für das Livetest-Beispiel (examples/login.rs): async-Laufzeit.

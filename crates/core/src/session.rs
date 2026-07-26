@@ -38,6 +38,10 @@ const START_TIMEOUT: Duration = Duration::from_secs(300);
 /// Zeitgrenze fürs Herunterfahren.
 const STOP_TIMEOUT: Duration = Duration::from_secs(90);
 
+/// Zeitgrenze für einen Live-Log-Long-Poll. Kommen bis dahin keine neuen Zeilen, kehrt
+/// `read_log` mit leerem Abschnitt zurück (der Aufrufer pollt einfach weiter).
+const LONGPOLL_TIMEOUT: Duration = Duration::from_secs(45);
+
 /// Web-Upload-Grenze des Panels („Maximal allowed upload size is 1.71 GB"). Konservativ als
 /// dezimale GB angesetzt; größere Dateien brauchen FTP/SFTP (`NoFileAccess`, MZ4).
 const MAX_WEB_UPLOAD: u64 = 1_710_000_000;
@@ -207,6 +211,49 @@ impl Session {
             Ok(())
         } else {
             Err(Error::NotProven)
+        }
+    }
+
+    /// Verfügbare Logs (Typen + Dateien) und die aktuelle `epoch` lesen (MZ5, Kap. 7.4 LH).
+    pub(crate) async fn list_logs(&self) -> Result<crate::model::LogListing> {
+        let url = self
+            .base_url
+            .join("logs.html?lang=en")
+            .map_err(|e| Error::Parse(e.to_string()))?;
+        crate::logs::parse_listing(&self.get_text(url).await?)
+    }
+
+    /// Log inkrementell lesen: alles ab `offset` der Datei `log_file` (Typ `log_type`), mit der
+    /// `epoch` aus [`Self::list_logs`]. Rückgabe enthält den neuen Text, die nächste Byte-Position
+    /// (`end_offset`) und ob das Log noch aktiv beschrieben wird (`tail -f`, Kap. 7.4 LH).
+    pub(crate) async fn read_log(
+        &self,
+        log_type: u8,
+        log_file: &str,
+        offset: u64,
+        epoch: u64,
+    ) -> Result<crate::model::LogChunk> {
+        let url = self
+            .base_url
+            .join(crate::logs::LONGPOLL_ENDPOINT)
+            .map_err(|e| Error::Parse(e.to_string()))?;
+        let body = vec![
+            ("log_type".to_string(), log_type.to_string()),
+            ("log_file".to_string(), log_file.to_string()),
+            ("offset".to_string(), offset.to_string()),
+            ("epoch".to_string(), epoch.to_string()),
+        ];
+        // Long-Poll: am Dateiende blockiert der Server bis neue Zeilen kommen. Per-Request-Timeout
+        // setzen; läuft es ab, gab es nichts Neues → leerer Abschnitt, `offset` unverändert.
+        let req = self.client.post(url).form(&body).timeout(LONGPOLL_TIMEOUT);
+        match self.send_raw(req).await {
+            Ok(resp) => crate::logs::parse_chunk(&resp.text().await.map_err(map_reqwest)?),
+            Err(e) if e.is_timeout() => Ok(crate::model::LogChunk {
+                content: String::new(),
+                end_offset: offset,
+                active: true,
+            }),
+            Err(e) => Err(map_reqwest(e)),
         }
     }
 
@@ -422,13 +469,19 @@ impl Session {
     /// `Set-Cookie`. So läuft die Sitzung wie ein Browser-Jar weiter, auch falls der Server
     /// die ID beim Login wechselt.
     async fn send(&self, req: RequestBuilder) -> Result<Response> {
+        self.send_raw(req).await.map_err(map_reqwest)
+    }
+
+    /// Wie [`Self::send`], aber mit dem **rohen** reqwest-Fehler — damit der Long-Poll ein
+    /// Timeout von echter Unerreichbarkeit unterscheiden kann.
+    async fn send_raw(&self, req: RequestBuilder) -> reqwest::Result<Response> {
         let sid = self.session_id.lock().unwrap().clone();
         let req = if sid.is_empty() {
             req
         } else {
             req.header(COOKIE, format!("{SESSION_COOKIE}={sid}"))
         };
-        let resp = req.send().await.map_err(map_reqwest)?;
+        let resp = req.send().await?;
         if let Some(new_sid) = session_id(&resp) {
             *self.session_id.lock().unwrap() = new_sid;
         }
