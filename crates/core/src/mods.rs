@@ -1,13 +1,20 @@
 //! Mod-Liste lesen, aktivieren/deaktivieren, Upload (Web/FTP), Löschen (Kap. 7.3 LH).
 //! Umschalten/Löschen nur bei gestopptem Server (folgt).
 //!
-//! **Mod-Liste parsen (am lebenden Server verifiziert):** Jede Mod-Zeile ist ein `div.grid-row`
-//! mit einer Checkbox `input.modSelection`. Deren `name` liefert **Dateiname und Status** in einem:
-//! `moddeactivate_<Datei>` = derzeit **aktiv** (die Checkbox würde deaktivieren),
-//! `modactivate_<Datei>` = **inaktiv**. Das ist robuster als das `id`-Attribut der Zeile (das haben
-//! nur die aktiven) oder die `modSelection-…`-Klasse (nur Auswahl-Zustand). Felder stehen als
-//! Label→Wert-Paare (`col-xs-3 col-md-hidden` = Label, `col-xs-9 col-md-12` = Wert); der sichtbare
-//! „Filename" ist teils gekürzt und wird ignoriert.
+//! **Mod-Liste parsen (in beiden Serverzuständen am lebenden Server verifiziert):** Jede Mod-Zeile
+//! ist ein `div.grid-row` mit `modSelection`-Klasse. Dateiname und Status kommen — in dieser
+//! Reihenfolge, je nach Verfügbarkeit:
+//! - **Checkbox** `input.modSelection` (nur bei **gestopptem** Server): `moddeactivate_<Datei>` =
+//!   aktiv, `modactivate_<Datei>` = inaktiv → Datei **und** Status in einem.
+//! - **`id`-Attribut** der Zeile = voller Dateiname (haben nur die **aktiven** Zeilen, in beiden
+//!   Zuständen). Bei **laufendem** Server fehlen die Checkboxen, daher wichtig.
+//! - **Filename-Spalte** (Wertspalte 4) als letzter Ausweg (für inaktive Zeilen bei laufendem
+//!   Server; kann bei sehr langen Namen gekürzt sein).
+//!
+//! Der **Status** kommt aus der Checkbox (offline eindeutig) oder — bei laufendem Server — aus dem
+//! **Abschnitt**: die Überschrift „Active Mods" leitet den Aktiv-Bereich ein, „Activate Mods"
+//! bzw. „Inactive Mods" den Inaktiv-Bereich. Die fünf Wertspalten (`col-xs-9 col-md-12`) stehen in
+//! fester Reihenfolge: **Name, Version, Author, Filename, Size**.
 //!
 //! Offen: `ModStatus::Orphan` (Karteileiche = Registry-Eintrag ohne Datei) wird noch **nicht**
 //! erkannt — dafür fehlt bislang ein echtes Beispiel am Server (dieser hat keine).
@@ -16,54 +23,74 @@ use scraper::{ElementRef, Html, Selector};
 
 use crate::model::{ModStatus, ServerMod};
 
-/// Aktive und inaktive Mods aus der Home-Seite lesen (Pflichtenheft 10.5 LH).
+/// Aktive und inaktive Mods aus der Home-Seite lesen (Pflichtenheft 10.5 LH), in beiden
+/// Serverzuständen. Überschriften und Mod-Zeilen werden **in Dokumentreihenfolge** durchlaufen,
+/// damit der Abschnitt (Active/Inactive) den Status liefert, wenn keine Checkbox da ist.
 pub(crate) fn parse_mods(html: &str) -> Vec<ServerMod> {
     let doc = Html::parse_document(html);
-    let row_sel = Selector::parse("div.grid-row").unwrap();
-    doc.select(&row_sel).filter_map(parse_row).collect()
-}
-
-/// Eine Mod-Zeile auswerten. Dateiname und Status kommen aus dem Checkbox-`name`
-/// (`mod(de)activate_<Datei>`); die übrigen Felder aus den Label→Wert-Paaren. Zeilen ohne
-/// Mod-Checkbox (z. B. die Kopfzeile) liefern `None`.
-fn parse_row(row: ElementRef) -> Option<ServerMod> {
-    let cb_sel = Selector::parse("input.modSelection[name]").unwrap();
-    let cb_name = row.select(&cb_sel).next()?.value().attr("name")?;
-    let (status, file_name) = if let Some(f) = cb_name.strip_prefix("moddeactivate_") {
-        (ModStatus::Active, f.to_string())
-    } else {
-        let f = cb_name.strip_prefix("modactivate_")?;
-        (ModStatus::Inactive, f.to_string())
-    };
-
-    let pair_sel = Selector::parse("div.col-xs-3.col-md-hidden, div.col-xs-9.col-md-12").unwrap();
-    let (mut display_name, mut version, mut author, mut size) = (None, None, None, None);
-    let mut label: Option<String> = None;
-    for el in row.select(&pair_sel) {
-        let class = el.value().attr("class").unwrap_or("");
-        let text = el.text().collect::<String>().trim().to_string();
-        if class.contains("col-xs-3") {
-            // Label-Spalte
-            label = Some(text.to_lowercase());
-        } else {
-            // Wert-Spalte — dem zuletzt gesehenen Label zuordnen
-            match label.take().as_deref() {
-                Some("name") => display_name = non_empty(text),
-                Some("version") => version = non_empty(text),
-                Some("author") => author = non_empty(text),
-                Some("size") => size = parse_size(&text),
-                _ => {} // „filename" ignorieren (gekürzt; Dateiname kommt aus der Checkbox)
+    let walk = Selector::parse("h2, div.grid-row").unwrap();
+    let mut section = ModStatus::Active;
+    let mut mods = Vec::new();
+    for el in doc.select(&walk) {
+        if el.value().name() == "h2" {
+            let heading = el.text().collect::<String>();
+            if heading.contains("Activate Mods") || heading.contains("Inactive Mods") {
+                section = ModStatus::Inactive;
+            } else if heading.contains("Active Mods") {
+                section = ModStatus::Active;
+            }
+        } else if el
+            .value()
+            .attr("class")
+            .is_some_and(|c| c.contains("modSelection"))
+        {
+            if let Some(m) = parse_row(el, section) {
+                mods.push(m);
             }
         }
     }
+    mods
+}
+
+/// Eine Mod-Zeile auswerten. `section` liefert den Status, falls keine Checkbox vorhanden ist.
+fn parse_row(row: ElementRef, section: ModStatus) -> Option<ServerMod> {
+    // Wertspalten in fester Reihenfolge: [Name, Version, Author, Filename, Size].
+    let value_sel = Selector::parse("div.col-xs-9.col-md-12").unwrap();
+    let vals: Vec<String> = row
+        .select(&value_sel)
+        .map(|e| e.text().collect::<String>().trim().to_string())
+        .collect();
+    let col = |i: usize| vals.get(i).and_then(|s| non_empty(s.clone()));
+
+    // Dateiname + Status: Checkbox (offline) > id (aktive) / Filename-Spalte + Abschnitt.
+    let cb = row
+        .select(&Selector::parse("input.modSelection[name]").unwrap())
+        .next()
+        .and_then(|c| c.value().attr("name").map(str::to_string));
+    let (status, file_name) = match cb.as_deref() {
+        Some(n) if n.starts_with("moddeactivate_") => {
+            (ModStatus::Active, n["moddeactivate_".len()..].to_string())
+        }
+        Some(n) if n.starts_with("modactivate_") => {
+            (ModStatus::Inactive, n["modactivate_".len()..].to_string())
+        }
+        _ => {
+            let file = row
+                .value()
+                .attr("id")
+                .map(str::to_string)
+                .or_else(|| col(3))?;
+            (section, file)
+        }
+    };
 
     Some(ServerMod {
         is_dlc: file_name.to_ascii_lowercase().ends_with(".dlc"),
         file_name,
-        display_name,
-        version,
-        author,
-        size,
+        display_name: col(0),
+        version: col(1),
+        author: col(2),
+        size: vals.get(4).and_then(|s| parse_size(s)),
         status,
     })
 }
@@ -204,6 +231,40 @@ mod tests {
     #[test]
     fn ohne_mod_formulare_leere_liste() {
         assert!(parse_mods("<html><body>nichts</body></html>").is_empty());
+    }
+
+    // Laufender Server: keine Checkboxen. Status kommt aus dem Abschnitt, Dateiname aus `id`
+    // (aktiv) bzw. der Filename-Spalte (inaktiv). Echtes Markup, gekürzt.
+    const ONLINE_HTML: &str = r#"
+      <h2>Active Mods</h2>
+      <div class="container-row col-md-visible col-xs-hidden grid-row"><div><b>Name</b></div></div>
+      <div class="container-row grid-row modSelection-inactive" id="FS25_DashboardLive_VanillaVehicles.zip">
+        <div class="col col-xs-9 col-md-12">Dashboard Live Vanilla Vehicles</div>
+        <div class="col col-xs-9 col-md-12">1.0.0.0</div>
+        <div class="col col-xs-9 col-md-12">Mister_mojo_AT</div>
+        <div class="col col-xs-9 col-md-12">FS25_DashboardLive_VanillaVehicl...</div>
+        <div class="col col-xs-9 col-md-12">393.37 MB</div>
+      </div>
+      <h2>Activate Mods</h2>
+      <div class="container-row grid-row modSelection-inactive">
+        <div class="col col-xs-9 col-md-12">Future Tech Production</div>
+        <div class="col col-xs-9 col-md-12">2.1.0.0</div>
+        <div class="col col-xs-9 col-md-12">emproLoop</div>
+        <div class="col col-xs-9 col-md-12">FS25_crusher.zip</div>
+        <div class="col col-xs-9 col-md-12">66.77 MB</div>
+      </div>"#;
+
+    #[test]
+    fn laufender_server_status_aus_abschnitt() {
+        let mods = parse_mods(ONLINE_HTML);
+        assert_eq!(mods.len(), 2);
+        // aktiv: Dateiname aus id (voll), Status aus Abschnitt „Active Mods"
+        assert_eq!(mods[0].file_name, "FS25_DashboardLive_VanillaVehicles.zip");
+        assert_eq!(mods[0].status, ModStatus::Active);
+        assert_eq!(mods[0].version.as_deref(), Some("1.0.0.0"));
+        // inaktiv: kein id/Checkbox → Dateiname aus Filename-Spalte, Status aus „Activate Mods"
+        assert_eq!(mods[1].file_name, "FS25_crusher.zip");
+        assert_eq!(mods[1].status, ModStatus::Inactive);
     }
 
     #[test]
