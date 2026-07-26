@@ -1,0 +1,137 @@
+:root {
+  --accent: #b8860b;            /* Ocker (Ernte/Korn) */
+  --accent-ink: #ffffff;
+  --bg: #f5f4f1;
+  --panel: #ffffff;
+  --panel-2: #faf9f6;
+  --ink: #23201a;
+  --ink-soft: #6b6558;
+  --line: #e3ded3;
+  --green: #2e7d32;
+  --grey: #8a8578;
+  --red: #c62828;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1915;
+    --panel: #232019;
+    --panel-2: #2b271f;
+    --ink: #ece7db;
+    --ink-soft: #a49d8c;
+    --line: #38332a;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Statusleiste */
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 52px;
+  padding: 0 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.brand { font-weight: 700; }
+.server-pick { flex: 1; }
+.server-name { color: var(--ink-soft); }
+.badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge-off { background: color-mix(in srgb, var(--grey) 20%, transparent); color: var(--grey); }
+.badge-on { background: color-mix(in srgb, var(--green) 20%, transparent); color: var(--green); }
+.badge-stopped { background: color-mix(in srgb, var(--grey) 22%, transparent); color: var(--ink-soft); }
+
+/* Layout */
+.app { flex: 1; display: flex; min-height: 0; }
+.sidebar {
+  width: 190px;
+  flex: 0 0 auto;
+  background: var(--panel-2);
+  border-right: 1px solid var(--line);
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nav-item {
+  text-align: left;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.nav-item:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.nav-item.active { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.nav-item:disabled { color: var(--ink-soft); opacity: 0.55; cursor: default; }
+
+.content { flex: 1; overflow: auto; padding: 24px 28px; }
+.view h1 { margin: 0 0 16px; font-size: 20px; }
+.hint { color: var(--ink-soft); max-width: 620px; }
+code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+
+/* Formular */
+.form { display: flex; flex-direction: column; gap: 12px; max-width: 460px; margin-top: 12px; }
+.form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-soft); }
+.form input {
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+button {
+  font: inherit;
+  cursor: pointer;
+}
+#btn-connect, .toolbar #btn-refresh {
+  align-self: flex-start;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+button:disabled { opacity: 0.6; cursor: default; }
+.ghost {
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+}
+.error { color: var(--red); font-weight: 500; }
+
+/* Übersicht */
+.toolbar { display: flex; align-items: center; gap: 12px; }
+.toolbar h1 { flex: 1; margin: 0; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-top: 18px; }
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.card-label { font-size: 12px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.04em; }
+.card-value { font-size: 28px; font-weight: 700; margin-top: 6px; }
+.card-sub { font-size: 13px; color: var(--ink-soft); margin-top: 2px; }

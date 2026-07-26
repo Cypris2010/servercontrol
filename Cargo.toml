@@ -1,3 +1,6 @@
 [workspace]
 resolver = "2"
 members = ["crates/core", "cli"]
+# Die GUI (Tauri) ist ein eigener Workspace (src-tauri/Cargo.toml) — bewusst ausgeschlossen,
+# damit `cargo build --workspace` und die CI plattformarm nur core+cli bauen.
+exclude = ["src-tauri"]

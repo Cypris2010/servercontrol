@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Server Control for Farming Simulator 2025</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Statusleiste (7.1): Serverwahl · Steuerung · Status -->
+    <header class="statusbar">
+      <div class="brand">🚜 Server Control</div>
+      <div class="server-pick">
+        <span id="server-name" class="server-name">— nicht verbunden —</span>
+      </div>
+      <div class="status-area">
+        <span id="status-badge" class="badge badge-off">nicht verbunden</span>
+      </div>
+    </header>
+
+    <div class="app">
+      <!-- Seitenleiste (G2–G6) -->
+      <nav class="sidebar">
+        <button class="nav-item active" data-view="overview">Übersicht</button>
+        <button class="nav-item" data-view="mods" disabled>Mods</button>
+        <button class="nav-item" data-view="deploy" disabled>Bereitstellen</button>
+        <button class="nav-item" data-view="settings" disabled>Spieleinstellungen</button>
+        <button class="nav-item" data-view="log" disabled>Log</button>
+      </nav>
+
+      <!-- Arbeitsbereich -->
+      <main class="content">
+        <!-- Verbinden-Bildschirm (G1, Startzustand) -->
+        <section id="connect-view" class="view">
+          <h1>Mit Server verbinden</h1>
+          <p class="hint">
+            Erst-Einrichtung: Das Passwort muss einmalig im OS-Schlüsselbund liegen (Schlüssel
+            <code>livetest/web</code>). In dieser frühen Version wird es über den Livetest hinterlegt.
+          </p>
+          <form id="connect-form" class="form">
+            <label>Adresse
+              <input id="in-url" type="text" placeholder="http://host:7999/index.html" required />
+            </label>
+            <label>Benutzer
+              <input id="in-user" type="text" value="admin" required />
+            </label>
+            <button type="submit" id="btn-connect">Verbinden</button>
+          </form>
+          <p id="connect-error" class="error" hidden></p>
+        </section>
+
+        <!-- Übersicht (nach Verbinden) -->
+        <section id="overview-view" class="view" hidden>
+          <div class="toolbar">
+            <h1>Übersicht</h1>
+            <button id="btn-refresh" class="ghost">Aktualisieren</button>
+            <button id="btn-disconnect" class="ghost">Verbindung trennen</button>
+          </div>
+          <div class="cards">
+            <div class="card">
+              <div class="card-label">Zustand</div>
+              <div id="ov-state" class="card-value">—</div>
+              <div id="ov-version" class="card-sub"></div>
+            </div>
+            <div class="card">
+              <div class="card-label">Mods gesamt</div>
+              <div id="ov-mods" class="card-value">—</div>
+              <div id="ov-mods-sub" class="card-sub"></div>
+            </div>
+            <div class="card">
+              <div class="card-label">DLC</div>
+              <div id="ov-dlc" class="card-value">—</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

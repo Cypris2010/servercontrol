@@ -16,14 +16,17 @@ servercontrol/
 ├─ crates/core/    servercontrol-core — die Bibliothek (Sitzung, Mods, Steuerung,
 │                  Einstellungen, Log, ModHub, Verifikation)
 ├─ cli/            servercontrol-cli — dünnes Binary auf der Crate
+├─ src-tauri/      servercontrol-gui — Tauri-App (dünne Command-Schicht, eigener Workspace)
+├─ src/            Web-Oberfläche (Vanilla HTML/CSS/JS, kein Bundler)
 ├─ docs/           Lasten- und Pflichtenheft (verbindliche Spezifikation)
 ├─ mockups/        interaktiver GUI-Mockup (visuelle Referenz) + Icon-Lizenz
 ├─ tools/          Prüf-/Aufnahmeskripte (Fixtures, Formular-Abgleich)
 └─ .github/        CI (Build/Test-Matrix Windows/macOS/Linux)
 ```
 
-Noch nicht angelegt: `src-tauri/` (Tauri-App) und `src/` (Web-Oberfläche). Der GUI-Mockup
-unter `mockups/` dient dabei als Ausgangspunkt für das Frontend.
+Die **GUI** ist ein eigener Workspace (`src-tauri/`), bewusst aus dem Kern-Workspace
+ausgeschlossen — so bauen `cargo build --workspace` und die CI plattformarm nur core+cli. Der
+GUI-Mockup unter `mockups/` dient als visuelle Vorlage fürs Frontend.
 
 ## Dokumentation
 
@@ -36,6 +39,9 @@ unter `mockups/` dient dabei als Ausgangspunkt für das Frontend.
 ```sh
 cargo build            # Workspace (core + cli)
 cargo run -p servercontrol-cli
+
+# GUI (Tauri) — braucht die Tauri-CLI (cargo install tauri-cli --version "^2"):
+cargo tauri dev        # aus dem Repo-Wurzelverzeichnis
 ```
 
 ## Technik
