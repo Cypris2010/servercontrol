@@ -180,6 +180,86 @@ fn checkbox_checked(form: ElementRef, name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Ist der Savegame-**Slot** `slot` leer? (Für `save_settings`: die vier Neues-Spiel-Felder
+/// werden nur bei leerem Zielslot gesendet — wie der Browser nach checkSavegame.)
+pub(crate) fn savegame_slot_empty(html: &str, slot: u8) -> bool {
+    let doc = Html::parse_document(html);
+    let sel = Selector::parse(&format!(
+        r#"form[name="configuration"] select[name="savegame"] option[value="{slot}"]"#
+    ))
+    .unwrap();
+    doc.select(&sel)
+        .next()
+        .map(|o| is_empty_label(&o.text().collect::<String>()))
+        .unwrap_or(false)
+}
+
+/// Formularkörper zum Speichern der Einstellungen bauen (ohne Absende-Knopf — den ergänzt der
+/// Aufrufer). Bildet das Browserverhalten nach: die savegame-abhängigen Felder nur bei leerem
+/// Zielslot, `crossplay_allowed` nur wenn aktiviert (`on`), sonst weglassen. Enums als Server-Code
+/// ("1"/"2"/"3"). Passwörter laufen hier als Werte durch, werden aber **nie** protokolliert.
+pub(crate) fn settings_body(s: &GameSettings, savegame_empty: bool) -> Vec<(String, String)> {
+    let mut body: Vec<(String, String)> = vec![
+        ("game_name", s.game_name.clone()),
+        ("admin_password", s.admin_password.expose().to_string()),
+        ("game_password", s.game_password.expose().to_string()),
+        ("savegame", s.savegame.to_string()),
+        ("server_port", s.server_port.to_string()),
+        ("max_player", s.max_player.to_string()),
+        ("mp_language", s.mp_language.clone()),
+        ("auto_save_interval", s.auto_save_interval.to_string()),
+        ("stats_interval", s.stats_interval.to_string()),
+        (
+            "pause_game_if_empty",
+            (s.pause_game_if_empty as u8).to_string(),
+        ),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_string(), v))
+    .collect();
+
+    if savegame_empty {
+        body.push(("map_start".to_string(), s.map_start.clone()));
+        body.push(("initialMoney".to_string(), s.initial_money.to_string()));
+        body.push(("initialLoan".to_string(), s.initial_loan.to_string()));
+        body.push((
+            "economicDifficulty".to_string(),
+            (s.economic_difficulty as u8).to_string(),
+        ));
+    }
+    if s.crossplay_allowed {
+        body.push(("crossplay_allowed".to_string(), "on".to_string()));
+    }
+    body
+}
+
+/// Prüft nach dem Speichern, ob die zurückgelesenen Einstellungen den gewünschten entsprechen
+/// (Q3). Verglichen werden nur die tatsächlich gesendeten Felder — die savegame-abhängigen nur
+/// bei leerem Zielslot.
+pub(crate) fn settings_saved(
+    want: &GameSettings,
+    got: &GameSettings,
+    savegame_empty: bool,
+) -> bool {
+    let base = want.game_name == got.game_name
+        && want.savegame == got.savegame
+        && want.server_port == got.server_port
+        && want.max_player == got.max_player
+        && want.mp_language == got.mp_language
+        && want.auto_save_interval == got.auto_save_interval
+        && want.stats_interval == got.stats_interval
+        && want.pause_game_if_empty == got.pause_game_if_empty
+        && want.crossplay_allowed == got.crossplay_allowed
+        && want.admin_password.expose() == got.admin_password.expose()
+        && want.game_password.expose() == got.game_password.expose();
+    let savegame_fields = !savegame_empty
+        || (want.map_start == got.map_start
+            && want.initial_money == got.initial_money
+            && want.initial_loan == got.initial_loan
+            && want.economic_difficulty == got.economic_difficulty);
+    base && savegame_fields
+}
+
 /// Existiert im Formular `form_name` ein Steuerelement mit dem Namen `field`? (Versionstoleranz
 /// Q4: erwarteter Absende-Knopf vor dem POST prüfen.)
 pub(crate) fn form_has_field(html: &str, form_name: &str, field: &str) -> bool {
@@ -313,6 +393,61 @@ mod tests {
     fn ohne_formular_fehler() {
         use super::parse_settings;
         assert!(parse_settings("<html><body>online, kein Formular</body></html>").is_err());
+    }
+
+    fn sample_settings() -> crate::model::GameSettings {
+        use crate::model::{Difficulty, GameSettings, PauseIfEmpty};
+        use crate::secret::Secret;
+        GameSettings {
+            game_name: "ccc222".into(),
+            admin_password: Secret::new("geheim1"),
+            game_password: Secret::new("geheim2"),
+            savegame: 2,
+            map_start: "default_MapEU".into(),
+            initial_money: 500000,
+            initial_loan: 0,
+            economic_difficulty: Difficulty::Normal,
+            server_port: 10823,
+            max_player: 4,
+            mp_language: "de".into(),
+            auto_save_interval: 30,
+            stats_interval: 31_536_000,
+            pause_game_if_empty: PauseIfEmpty::Instantly,
+            crossplay_allowed: true,
+        }
+    }
+
+    #[test]
+    fn speicher_body_belegtes_savegame_ohne_neuspiel_felder() {
+        use super::settings_body;
+        let body = settings_body(&sample_settings(), false);
+        let names: Vec<&str> = body.iter().map(|(k, _)| k.as_str()).collect();
+        assert!(names.contains(&"game_name"));
+        assert!(names.contains(&"pause_game_if_empty"));
+        assert!(body.contains(&("pause_game_if_empty".into(), "2".into()))); // Instantly
+        assert!(body.contains(&("crossplay_allowed".into(), "on".into())));
+        // belegtes Savegame → die vier Neues-Spiel-Felder NICHT senden
+        assert!(!names.contains(&"map_start"));
+        assert!(!names.contains(&"initialMoney"));
+        assert!(!names.contains(&"economicDifficulty"));
+    }
+
+    #[test]
+    fn speicher_body_leeres_savegame_mit_neuspiel_feldern() {
+        use super::settings_body;
+        let body = settings_body(&sample_settings(), true);
+        assert!(body.contains(&("map_start".into(), "default_MapEU".into())));
+        assert!(body.contains(&("initialMoney".into(), "500000".into())));
+        assert!(body.contains(&("economicDifficulty".into(), "2".into()))); // Normal
+    }
+
+    #[test]
+    fn crossplay_aus_wird_weggelassen() {
+        use super::settings_body;
+        let mut s = sample_settings();
+        s.crossplay_allowed = false;
+        let body = settings_body(&s, false);
+        assert!(!body.iter().any(|(k, _)| k == "crossplay_allowed"));
     }
 
     #[test]

@@ -147,6 +147,35 @@ impl Session {
         crate::settings::parse_settings_options(&self.home().await?)
     }
 
+    /// Spiel-Einstellungen speichern — **nur bei gestopptem Server** (Kap. 6). Voll-Formular-
+    /// Umlauf: alle Felder aus `settings` senden + `save_settings`. Q4: fehlt das Formular/der
+    /// Knopf → `FormMismatch`. Q3: danach zurücklesen und vergleichen — sonst `NotProven`.
+    pub(crate) async fn save_settings(&self, settings: &crate::model::GameSettings) -> Result<()> {
+        let home = self.home().await?;
+        if matches!(parse_state(&home)?, ServerState::Online { .. }) {
+            return Err(Error::ServerRunning);
+        }
+        let action = self.form_url(&home, "configuration")?;
+        if !crate::settings::form_has_field(&home, "configuration", "save_settings") {
+            return Err(Error::FormMismatch(
+                "save_settings-Knopf fehlt (falscher Serverzustand?)".to_string(),
+            ));
+        }
+
+        let savegame_empty = crate::settings::savegame_slot_empty(&home, settings.savegame);
+        let mut body = crate::settings::settings_body(settings, savegame_empty);
+        body.push(("save_settings".to_string(), "Save".to_string()));
+        self.send(self.client.post(action).form(&body)).await?;
+
+        // Q3: Ergebnis am zurückgelesenen Zustand belegen.
+        let after = crate::settings::parse_settings(&self.home().await?)?;
+        if crate::settings::settings_saved(settings, &after, savegame_empty) {
+            Ok(())
+        } else {
+            Err(Error::NotProven)
+        }
+    }
+
     /// Mods aktivieren/deaktivieren — **nur bei gestopptem Server** (Kap. 7.3 LH).
     ///
     /// Deaktivieren läuft über das `ActiveMods`-Formular (`moddeactivate_<Datei>` +

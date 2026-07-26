@@ -111,8 +111,8 @@ impl ServerControl {
     pub async fn read_settings_options(&self) -> Result<SettingsOptions> {
         self.session.read_settings_options().await
     }
-    pub async fn save_settings(&self, _s: &GameSettings, _ctx: &OpCtx) -> Result<()> {
-        todo!()
+    pub async fn save_settings(&self, s: &GameSettings, _ctx: &OpCtx) -> Result<()> {
+        self.session.save_settings(s).await
     }
 
     // Weitere Operationen (upload_mod, delete_mod, put_file/get_file/list_dir, Logs,
