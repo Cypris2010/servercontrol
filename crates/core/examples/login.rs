@@ -40,6 +40,10 @@ async fn main() {
     match ServerControl::connect(&profile, &OpCtx).await {
         Ok(sc) => {
             println!("Anmeldung erfolgreich — Sitzung steht.");
+            match sc.state().await {
+                Ok(state) => println!("Status: {state:?}"),
+                Err(e) => println!("Status konnte nicht gelesen werden: {e}"),
+            }
             match sc.logout().await {
                 Ok(()) => println!("Abgemeldet."),
                 Err(e) => println!("Abmelden meldete: {e}"),

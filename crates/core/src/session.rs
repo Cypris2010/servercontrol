@@ -22,6 +22,7 @@ use scraper::{Html, Selector};
 use url::Url;
 
 use crate::error::Error;
+use crate::model::ServerState;
 use crate::secret::Secret;
 use crate::Result;
 
@@ -60,6 +61,10 @@ impl Session {
         let client = Client::builder()
             .user_agent(concat!("ServerControl/", env!("CARGO_PKG_VERSION")))
             .http1_title_case_headers()
+            // Kein Keep-Alive-Pooling: Das FS-Panel schließt Verbindungen nach jeder Antwort;
+            // eine wiederverwendete Pool-Verbindung ist dann tot und der nächste Request stirbt
+            // mit „error sending request". Jede Anfrage frisch (wie curl) — verifiziert.
+            .pool_max_idle_per_host(0)
             .danger_accept_invalid_certs(accept_invalid_cert)
             .build()
             .map_err(|e| Error::Network(e.to_string()))?;
@@ -114,6 +119,36 @@ impl Session {
         Ok(())
     }
 
+    /// Aktueller Laufzeitzustand (online/offline + Spielversion), Pflichtenheft 9.1.
+    pub(crate) async fn state(&self) -> Result<ServerState> {
+        parse_state(&self.home().await?)
+    }
+
+    /// Authentifizierten GET der Home-Seite; erneuert die Sitzung **einmal transparent**, falls
+    /// sie abgelaufen ist (Login-Formular zurück statt Home) — reaktiv, kein Pollen (Kap. 6).
+    async fn home(&self) -> Result<String> {
+        let body = self.get_text(self.base_url.clone()).await?;
+        if !is_login_page(&body) {
+            return Ok(body);
+        }
+        // Sitzung abgelaufen → einmal neu anmelden und Home erneut holen.
+        self.authenticate().await?;
+        let body = self.get_text(self.base_url.clone()).await?;
+        if is_login_page(&body) {
+            return Err(Error::AuthFailed);
+        }
+        Ok(body)
+    }
+
+    /// GET einer URL mit der Sitzung, Antwort als Text.
+    async fn get_text(&self, url: Url) -> Result<String> {
+        self.send(self.client.get(url))
+            .await?
+            .text()
+            .await
+            .map_err(map_reqwest)
+    }
+
     /// Abmelden: GET `index.html?logout=true` (Kap. 6).
     pub(crate) async fn logout(&self) -> Result<()> {
         let mut url = self.base_url.clone();
@@ -150,6 +185,55 @@ fn is_login_page(html: &str) -> bool {
     let form = Selector::parse(r#"form[name="input"]"#).unwrap();
     let password = Selector::parse(r#"input[type="password"]"#).unwrap();
     doc.select(&form).next().is_some() && doc.select(&password).next().is_some()
+}
+
+/// Laufzeitzustand aus der Home-Seite lesen (Pflichtenheft 9.1). Primärer Anker:
+/// `div.status-indicator` mit Modifier-Klasse `online`/`offline`. Online zusätzlich die
+/// Spielversion (best effort).
+fn parse_state(html: &str) -> Result<ServerState> {
+    let doc = Html::parse_document(html);
+    let sel = Selector::parse("div.status-indicator").unwrap();
+    let class = doc
+        .select(&sel)
+        .next()
+        .and_then(|e| e.value().attr("class"))
+        .ok_or_else(|| Error::Parse("status-indicator nicht gefunden".to_string()))?;
+    let has = |name: &str| class.split_whitespace().any(|c| c == name);
+    if has("online") {
+        Ok(ServerState::Online {
+            version: parse_game_version(html),
+        })
+    } else if has("offline") {
+        Ok(ServerState::Offline)
+    } else {
+        Err(Error::Parse(
+            "status-indicator ohne online/offline".to_string(),
+        ))
+    }
+}
+
+/// Spielversion aus der eingeloggten Home-Seite: die „Game"-Zeile trägt z. B.
+/// `Farming Simulator 25 (1.19.0.0)` → `1.19.0.0`. **Nicht** der Web-Interface-Build aus dem
+/// Footer (`10.0.0.0`). `None`, wenn nicht gefunden (z. B. offline).
+fn parse_game_version(html: &str) -> Option<String> {
+    // Die Seite enthält „Farming Simulator" mehrfach (u. a. im `<title>`). Gesucht ist die
+    // „Game"-Zeile `Farming Simulator 25 (1.19.0.0)`, wo die Klammer **dicht** folgt — daran
+    // grenzen wir sie vom Titel („… Dedicated Server") ab.
+    for (i, _) in html.match_indices("Farming Simulator") {
+        let rest = &html[i..];
+        let Some(open) = rest.find('(') else { continue };
+        if open > 30 {
+            continue; // Klammer zu weit weg → nicht die Versionszeile
+        }
+        let Some(close_rel) = rest[open..].find(')') else {
+            continue;
+        };
+        let v = rest[open + 1..open + close_rel].trim();
+        if v.contains('.') && v.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            return Some(v.to_string());
+        }
+    }
+    None
 }
 
 /// SessionID-Cookie aus einer Antwort lesen.
@@ -214,5 +298,54 @@ mod tests {
             <div class="status-indicator offline"><span>OFFLINE</span></div>
             <form name="configuration"></form></body></html>"#;
         assert!(!is_login_page(html));
+    }
+
+    // --- Zustandserkennung (echtes Markup vom FS25-Panel, Umgebungsdaten anonymisiert) ---
+
+    #[test]
+    fn erkennt_online_mit_version() {
+        // Mit `<title>` (enthält ebenfalls „Farming Simulator") — der Parser darf trotzdem die
+        // Versionszeile treffen, nicht den Titel.
+        let html = r#"<title>Farming Simulator Dedicated Server | ONLINE</title><header>
+            <div class="status-indicator online"><span>ONLINE</span></div></header>
+            <form name="configuration" action="index.html?lang=en" method="POST">
+              <div class="row column table-even">
+                <div class="medium-3 columns column-label">Game</div>
+                <div class="medium-9 columns">Farming Simulator 25 (1.19.0.0)</div>
+              </div>
+            </form>
+            <a href="http://www.farming-simulator.com">10.0.0.0</a>"#;
+        assert_eq!(
+            super::parse_state(html).unwrap(),
+            super::ServerState::Online {
+                version: Some("1.19.0.0".to_string())
+            }
+        );
+    }
+
+    #[test]
+    fn erkennt_offline() {
+        let html = r#"<header>
+            <div class="status-indicator offline"><span>OFFLINE</span></div></header>"#;
+        assert_eq!(
+            super::parse_state(html).unwrap(),
+            super::ServerState::Offline
+        );
+    }
+
+    #[test]
+    fn version_nimmt_nicht_den_footer_build() {
+        // Ohne „Game"-Zeile (z. B. Markup-Änderung) → lieber keine Version als der 10.0.0.0-Build.
+        let html = r#"<div class="status-indicator online"><span>ONLINE</span></div>
+            <a href="http://www.farming-simulator.com">10.0.0.0</a>"#;
+        assert_eq!(
+            super::parse_state(html).unwrap(),
+            super::ServerState::Online { version: None }
+        );
+    }
+
+    #[test]
+    fn ohne_status_indicator_ist_parse_fehler() {
+        assert!(super::parse_state("<html><body>nix</body></html>").is_err());
     }
 }

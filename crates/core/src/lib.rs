@@ -74,7 +74,7 @@ impl ServerControl {
 
     /// Aktueller Laufzeitzustand (online/offline + Spielversion).
     pub async fn state(&self) -> Result<ServerState> {
-        todo!()
+        self.session.state().await
     }
 
     // --- Mods (F3/F4) ---
