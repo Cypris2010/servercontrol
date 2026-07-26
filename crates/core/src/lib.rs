@@ -84,8 +84,8 @@ impl ServerControl {
     }
 
     /// Nur bei **gestopptem** Server möglich (sonst `Error::ServerRunning`).
-    pub async fn set_active(&self, _activate: &[String], _deactivate: &[String]) -> Result<()> {
-        todo!()
+    pub async fn set_active(&self, activate: &[String], deactivate: &[String]) -> Result<()> {
+        self.session.set_active(activate, deactivate).await
     }
 
     // --- Steuerung (F6) — Voll-Formular-Umlauf, Ergebnis am Zustand belegt ---

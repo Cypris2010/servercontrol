@@ -72,6 +72,22 @@ fn non_empty(s: String) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
+/// Formularkörper zum Umschalten bauen: je Datei `<prefix><Datei>=on` (angehakte Checkbox),
+/// dazu der Absende-Knopf `<submit_name>=<submit_value>` — genau wie der Browser sendet.
+pub(crate) fn toggle_body(
+    files: &[String],
+    checkbox_prefix: &str,
+    submit_name: &str,
+    submit_value: &str,
+) -> Vec<(String, String)> {
+    let mut body: Vec<(String, String)> = files
+        .iter()
+        .map(|f| (format!("{checkbox_prefix}{f}"), "on".to_string()))
+        .collect();
+    body.push((submit_name.to_string(), submit_value.to_string()));
+    body
+}
+
 /// „393.37 MB" → Bytes. `None`, wenn nicht als `<Zahl> <Einheit>` erkennbar.
 fn parse_size(s: &str) -> Option<u64> {
     let (num, unit) = s.trim().split_once(' ')?;
@@ -171,5 +187,19 @@ mod tests {
     #[test]
     fn ohne_mod_formulare_leere_liste() {
         assert!(parse_mods("<html><body>nichts</body></html>").is_empty());
+    }
+
+    #[test]
+    fn toggle_body_baut_checkboxen_und_absendeknopf() {
+        let files = vec!["FS25_a.zip".to_string(), "b.dlc".to_string()];
+        let body = super::toggle_body(&files, "moddeactivate_", "deactivate_mods", "Deactivate");
+        assert_eq!(
+            body,
+            vec![
+                ("moddeactivate_FS25_a.zip".to_string(), "on".to_string()),
+                ("moddeactivate_b.dlc".to_string(), "on".to_string()),
+                ("deactivate_mods".to_string(), "Deactivate".to_string()),
+            ]
+        );
     }
 }

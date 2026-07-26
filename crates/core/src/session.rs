@@ -22,7 +22,7 @@ use scraper::{Html, Selector};
 use url::Url;
 
 use crate::error::Error;
-use crate::model::ServerState;
+use crate::model::{ModStatus, ServerState};
 use crate::secret::Secret;
 use crate::Result;
 
@@ -90,7 +90,7 @@ impl Session {
             .text()
             .await
             .map_err(map_reqwest)?;
-        let action = login_form_action(&login_page)
+        let action = form_action(&login_page, "input")
             .and_then(|a| self.base_url.join(&a).ok())
             .unwrap_or_else(|| self.base_url.clone());
 
@@ -127,6 +127,67 @@ impl Session {
     /// Aktive und inaktive Mods lesen (Pflichtenheft 10.5 LH).
     pub(crate) async fn list_mods(&self) -> Result<Vec<crate::model::ServerMod>> {
         Ok(crate::mods::parse_mods(&self.home().await?))
+    }
+
+    /// Mods aktivieren/deaktivieren — **nur bei gestopptem Server** (Kap. 7.3 LH).
+    ///
+    /// Deaktivieren läuft über das `ActiveMods`-Formular (`moddeactivate_<Datei>` +
+    /// `deactivate_mods`), Aktivieren über `InactiveMods` (`modactivate_<Datei>` +
+    /// `activate_mods`). Ergebnis wird belegt: jeder Mod muss danach im gegenteiligen Bereich
+    /// stehen (Q3) — sonst `NotProven`. Fehlt ein erwartetes Formular → `FormMismatch` (Q4).
+    pub(crate) async fn set_active(
+        &self,
+        activate: &[String],
+        deactivate: &[String],
+    ) -> Result<()> {
+        if activate.is_empty() && deactivate.is_empty() {
+            return Ok(());
+        }
+
+        // Guard: Umschalten geht nur offline (online fehlen die Mod-Checkboxen, Kap. 9.1).
+        let home = self.home().await?;
+        if matches!(parse_state(&home)?, ServerState::Online { .. }) {
+            return Err(Error::ServerRunning);
+        }
+
+        if !deactivate.is_empty() {
+            let action = self.form_url(&home, "ActiveMods")?;
+            let body = crate::mods::toggle_body(
+                deactivate,
+                "moddeactivate_",
+                "deactivate_mods",
+                "Deactivate",
+            );
+            self.send(self.client.post(action).form(&body)).await?;
+        }
+        if !activate.is_empty() {
+            let action = self.form_url(&home, "InactiveMods")?;
+            let body =
+                crate::mods::toggle_body(activate, "modactivate_", "activate_mods", "Activate");
+            self.send(self.client.post(action).form(&body)).await?;
+        }
+
+        // Verifikation (Q3): jeder Mod muss jetzt im gegenteiligen Bereich stehen.
+        let mods = crate::mods::parse_mods(&self.home().await?);
+        let status_of = |file: &str| mods.iter().find(|m| m.file_name == file).map(|m| m.status);
+        let ok = deactivate
+            .iter()
+            .all(|f| status_of(f) == Some(ModStatus::Inactive))
+            && activate
+                .iter()
+                .all(|f| status_of(f) == Some(ModStatus::Active));
+        if ok {
+            Ok(())
+        } else {
+            Err(Error::NotProven)
+        }
+    }
+
+    /// Absolute `action`-URL eines Formulars auf `html`; fehlt es, `FormMismatch` (Q4).
+    fn form_url(&self, html: &str, form_name: &str) -> Result<Url> {
+        form_action(html, form_name)
+            .and_then(|a| self.base_url.join(&a).ok())
+            .ok_or_else(|| Error::FormMismatch(format!("Formular {form_name} nicht gefunden")))
     }
 
     /// Authentifizierten GET der Home-Seite; erneuert die Sitzung **einmal transparent**, falls
@@ -248,11 +309,12 @@ fn session_id(resp: &Response) -> Option<String> {
         .map(|c| c.value().to_string())
 }
 
-/// `action`-Ziel des Login-Formulars (`form[name="input"]`) auslesen, z. B.
-/// `index.html?lang=en`. Der Login-Handler reagiert nur auf diese vollständige URL.
-fn login_form_action(html: &str) -> Option<String> {
+/// `action`-Ziel eines benannten Formulars auslesen (z. B. `input`, `ActiveMods`,
+/// `InactiveMods`) — meist `index.html?lang=…`. Der Server reagiert nur auf diese vollständige
+/// URL (siehe Login).
+fn form_action(html: &str, form_name: &str) -> Option<String> {
     let doc = Html::parse_document(html);
-    let form = Selector::parse(r#"form[name="input"]"#).unwrap();
+    let form = Selector::parse(&format!(r#"form[name="{form_name}"]"#)).unwrap();
     doc.select(&form)
         .next()
         .and_then(|f| f.value().attr("action"))
@@ -292,7 +354,7 @@ mod tests {
             <input type="password" name="password" value="">
             <input class="button" name="login" type="submit" value="Login"></form>"#;
         assert_eq!(
-            super::login_form_action(html).as_deref(),
+            super::form_action(html, "input").as_deref(),
             Some("index.html?lang=en")
         );
     }
