@@ -263,6 +263,36 @@ async fn delete_mod(state: tauri::State<'_, AppState>, file_name: String) -> Res
     sc.delete_mod(&file_name).await.map_err(|e| e.to_string())
 }
 
+// --- G4: Serversteuerung im Kopf (Pflichtenheft 7.7) ---
+//
+// start/stop/restart verifizieren intern selbst (Q3, Kap. 9) und geben erst bei
+// nachgewiesenem Ergebnis zurück — die Sperre der Buttons während des Aufrufs hält die
+// GUI so lange busy, wie die Bibliothek für den Nachweis braucht (bis zu 5 Minuten beim Start).
+
+#[tauri::command]
+async fn start_server(state: tauri::State<'_, AppState>) -> Result<Overview, String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    sc.start(&OpCtx).await.map_err(|e| e.to_string())?;
+    build_overview(sc).await
+}
+
+#[tauri::command]
+async fn stop_server(state: tauri::State<'_, AppState>) -> Result<Overview, String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    sc.stop(&OpCtx).await.map_err(|e| e.to_string())?;
+    build_overview(sc).await
+}
+
+#[tauri::command]
+async fn restart_server(state: tauri::State<'_, AppState>) -> Result<Overview, String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    sc.restart(&OpCtx).await.map_err(|e| e.to_string())?;
+    build_overview(sc).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -288,7 +318,10 @@ pub fn run() {
             disconnect,
             mods_view,
             set_active,
-            delete_mod
+            delete_mod,
+            start_server,
+            stop_server,
+            restart_server
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -510,20 +510,83 @@ async function connectFromMenu(id) {
   if (e) alert("Verbinden fehlgeschlagen: " + e);
 }
 
+// --- Serversteuerung im Kopf (G4, Pflichtenheft 7.7) ---
+let lastOnline = null; // zuletzt bekannter Zustand (kein Hintergrund-Check, nur nach Abruf)
+
 function setStatus(overview) {
   const badge = $("status-badge");
   if (!overview) {
     badge.textContent = "nicht verbunden";
     badge.className = "badge badge-off";
-    return;
-  }
-  if (overview.online) {
+    lastOnline = null;
+  } else if (overview.online) {
     badge.textContent = "läuft";
     badge.className = "badge badge-on";
+    lastOnline = true;
   } else {
     badge.textContent = "gestoppt";
     badge.className = "badge badge-stopped";
+    lastOnline = false;
   }
+  updateControlButtons();
+}
+
+function updateControlButtons() {
+  const connected = activeProfileId !== null;
+  $("btn-start").hidden = !connected || lastOnline !== false;
+  $("btn-restart").hidden = !connected || lastOnline !== true;
+  $("btn-stop").hidden = !connected || lastOnline !== true;
+}
+
+async function refreshAfterControlAction(overview) {
+  renderOverview(overview);
+  if (!$("mods-view").hidden) await loadMods();
+}
+
+async function runControlAction(btn, command, busyLabel) {
+  const buttons = [$("btn-start"), $("btn-restart"), $("btn-stop")];
+  buttons.forEach((b) => (b.disabled = true));
+  const original = btn.textContent;
+  btn.textContent = busyLabel;
+  try {
+    const overview = await invoke(command);
+    await refreshAfterControlAction(overview);
+  } catch (e) {
+    alert("Aktion fehlgeschlagen: " + e);
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+    btn.textContent = original;
+  }
+}
+
+async function startServer() {
+  const ok = await confirmDialog(
+    "Server starten?",
+    "Der Server wird gestartet. Die aktuellen Einstellungen werden dabei unverändert übernommen. Das kann einige Minuten dauern.",
+    "Starten",
+    false,
+  );
+  if (ok) await runControlAction($("btn-start"), "start_server", "Startet…");
+}
+
+async function stopServer() {
+  const ok = await confirmDialog(
+    "Server stoppen?",
+    "Der Server wird gestoppt — verbundene Mitspieler werden getrennt.",
+    "Stoppen",
+    true,
+  );
+  if (ok) await runControlAction($("btn-stop"), "stop_server", "Stoppt…");
+}
+
+async function restartServer() {
+  const ok = await confirmDialog(
+    "Server neu starten?",
+    "Der Server wird neu gestartet — verbundene Mitspieler werden getrennt.",
+    "Neu starten",
+    true,
+  );
+  if (ok) await runControlAction($("btn-restart"), "restart_server", "Startet neu…");
 }
 
 function renderOverview(o) {
@@ -573,6 +636,9 @@ function initEyeToggle(btn) {
 
 window.addEventListener("DOMContentLoaded", () => {
   $("btn-refresh").addEventListener("click", refresh);
+  $("btn-start").addEventListener("click", startServer);
+  $("btn-restart").addEventListener("click", restartServer);
+  $("btn-stop").addEventListener("click", stopServer);
   document.querySelectorAll(".nav-item").forEach((b) =>
     b.addEventListener("click", () => {
       if (!b.disabled) show(b.dataset.view);

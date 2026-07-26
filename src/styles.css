@@ -46,6 +46,7 @@ body {
 }
 .brand { font-weight: 700; }
 .server-name { color: var(--ink-soft); }
+.status-area { display: flex; align-items: center; gap: 8px; }
 .badge {
   padding: 3px 10px;
   border-radius: 999px;
