@@ -64,6 +64,16 @@ async fn main() {
                 Ok(s) => println!("Einstellungen: {s:?}"), // Secret-Debug zeigt Passwörter als ***
                 Err(e) => println!("Einstellungen nicht lesbar: {e}"),
             }
+            match sc.read_settings_options().await {
+                Ok(o) => println!(
+                    "Optionen: {} Maps, {} Savegames, {} Sprachen | Maps: {:?}",
+                    o.maps.len(),
+                    o.savegames.len(),
+                    o.mp_language.len(),
+                    o.maps.iter().map(|m| &m.label).collect::<Vec<_>>(),
+                ),
+                Err(e) => println!("Optionen nicht lesbar: {e}"),
+            }
             match sc.logout().await {
                 Ok(()) => println!("Abgemeldet."),
                 Err(e) => println!("Abmelden meldete: {e}"),

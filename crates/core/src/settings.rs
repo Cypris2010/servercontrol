@@ -16,7 +16,7 @@
 use scraper::{ElementRef, Html, Selector};
 
 use crate::error::Error;
-use crate::model::{Difficulty, GameSettings, PauseIfEmpty};
+use crate::model::{Difficulty, FieldOption, GameSettings, PauseIfEmpty, SettingsOptions};
 use crate::secret::Secret;
 use crate::Result;
 
@@ -109,6 +109,49 @@ pub(crate) fn parse_settings(html: &str) -> Result<GameSettings> {
             .unwrap_or(PauseIfEmpty::No),
         crossplay_allowed: checkbox_checked(form, "crossplay_allowed"),
     })
+}
+
+/// Verfügbare Dropdown-Optionen des `configuration`-Formulars lesen (G6). Nur bei gestopptem
+/// Server, wo das echte Formular vorliegt (online → `FormMismatch`). Die Map-Liste ist
+/// serverabhängig (Basis-Maps + installierte Map-Mods).
+pub(crate) fn parse_settings_options(html: &str) -> Result<SettingsOptions> {
+    let doc = Html::parse_document(html);
+    let form = doc
+        .select(&Selector::parse(r#"form[name="configuration"]"#).unwrap())
+        .next()
+        .ok_or_else(|| Error::FormMismatch("configuration-Formular fehlt".to_string()))?;
+    if form
+        .select(&Selector::parse(r#"select[name="savegame"]"#).unwrap())
+        .next()
+        .is_none()
+    {
+        return Err(Error::FormMismatch(
+            "Optionen nur bei gestopptem Server lesbar".to_string(),
+        ));
+    }
+    Ok(SettingsOptions {
+        savegames: options_of(form, "savegame"),
+        maps: options_of(form, "map_start"),
+        initial_money: options_of(form, "initialMoney"),
+        initial_loan: options_of(form, "initialLoan"),
+        economic_difficulty: options_of(form, "economicDifficulty"),
+        max_player: options_of(form, "max_player"),
+        mp_language: options_of(form, "mp_language"),
+        pause_game_if_empty: options_of(form, "pause_game_if_empty"),
+    })
+}
+
+/// Alle `<option>` eines `<select name=…>` als `(value, label)` lesen. Optionen ohne `value`
+/// werden übersprungen.
+fn options_of(form: ElementRef, select_name: &str) -> Vec<FieldOption> {
+    let sel = Selector::parse(&format!(r#"select[name="{select_name}"] option"#)).unwrap();
+    form.select(&sel)
+        .filter_map(|o| {
+            let value = o.value().attr("value")?.to_string();
+            let label = o.text().collect::<String>().trim().to_string();
+            Some(FieldOption { value, label })
+        })
+        .collect()
 }
 
 /// Zahlenwert eines Formularfelds (generisch über den Zieltyp).
@@ -270,5 +313,26 @@ mod tests {
     fn ohne_formular_fehler() {
         use super::parse_settings;
         assert!(parse_settings("<html><body>online, kein Formular</body></html>").is_err());
+    }
+
+    #[test]
+    fn liest_dropdown_optionen() {
+        use super::parse_settings_options;
+        // Map-Select mit Basis-Maps + einer Map-Mod (echtes Markup).
+        let html = r#"
+          <form name="configuration">
+            <select name="savegame"><option value="1">SAVEGAME 1 - Empty</option></select>
+            <select name="map_start">
+              <option value="default_MapEU">Zielonka</option>
+              <option value="FS25_NFMarsch4fach.zip_SampleModMap" selected="selected">NF Marsch 4fach</option>
+            </select>
+          </form>"#;
+        let o = parse_settings_options(html).unwrap();
+        assert_eq!(o.maps.len(), 2);
+        assert_eq!(o.maps[0].value, "default_MapEU");
+        assert_eq!(o.maps[0].label, "Zielonka");
+        assert_eq!(o.maps[1].value, "FS25_NFMarsch4fach.zip_SampleModMap");
+        assert_eq!(o.maps[1].label, "NF Marsch 4fach");
+        assert_eq!(o.savegames.len(), 1);
     }
 }

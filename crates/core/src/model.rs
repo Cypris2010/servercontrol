@@ -101,6 +101,30 @@ impl PauseIfEmpty {
     }
 }
 
+/// Eine Auswahlmöglichkeit eines Dropdowns: technischer `value` + Anzeigename `label`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FieldOption {
+    pub value: String,
+    pub label: String,
+}
+
+/// Verfügbare Optionen der Spieleinstellungs-Dropdowns (für die GUI-Auswahlfelder, G6).
+///
+/// **Live aus dem `configuration`-Formular gelesen**, damit sie zum Server passen — v. a. die
+/// **Map-Liste** ist serverabhängig (Basis-Maps + jede installierte Map-Mod). `read_settings`
+/// liefert die aktuelle Auswahl, diese Struktur die wählbaren Werte.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SettingsOptions {
+    pub savegames: Vec<FieldOption>,
+    pub maps: Vec<FieldOption>,
+    pub initial_money: Vec<FieldOption>,
+    pub initial_loan: Vec<FieldOption>,
+    pub economic_difficulty: Vec<FieldOption>,
+    pub max_player: Vec<FieldOption>,
+    pub mp_language: Vec<FieldOption>,
+    pub pause_game_if_empty: Vec<FieldOption>,
+}
+
 /// Laufzeit-Kontext für lange Operationen: Abbruch + Fortschritt (Pflichtenheft 4.2).
 ///
 /// Platzhalter — wird um `CancellationToken` und eine `ProgressSink` erweitert.

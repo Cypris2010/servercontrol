@@ -27,7 +27,8 @@ use session::Session;
 
 pub use error::Error;
 pub use model::{
-    Difficulty, GameSettings, ModStatus, OpCtx, PauseIfEmpty, Progress, ServerMod, ServerState,
+    Difficulty, FieldOption, GameSettings, ModStatus, OpCtx, PauseIfEmpty, Progress, ServerMod,
+    ServerState, SettingsOptions,
 };
 pub use profile::{FileAccess, FileProtocol, ServerProfile};
 pub use secret::Secret;
@@ -104,6 +105,11 @@ impl ServerControl {
 
     pub async fn read_settings(&self) -> Result<GameSettings> {
         self.session.read_settings().await
+    }
+
+    /// Verfügbare Dropdown-Optionen der Einstellungen (Maps, Savegames, …) für die GUI (G6).
+    pub async fn read_settings_options(&self) -> Result<SettingsOptions> {
+        self.session.read_settings_options().await
     }
     pub async fn save_settings(&self, _s: &GameSettings, _ctx: &OpCtx) -> Result<()> {
         todo!()

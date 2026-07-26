@@ -142,6 +142,11 @@ impl Session {
         crate::settings::parse_settings(&self.home().await?)
     }
 
+    /// Verfügbare Dropdown-Optionen der Einstellungen lesen (G6; nur gestoppt).
+    pub(crate) async fn read_settings_options(&self) -> Result<crate::model::SettingsOptions> {
+        crate::settings::parse_settings_options(&self.home().await?)
+    }
+
     /// Mods aktivieren/deaktivieren — **nur bei gestopptem Server** (Kap. 7.3 LH).
     ///
     /// Deaktivieren läuft über das `ActiveMods`-Formular (`moddeactivate_<Datei>` +
