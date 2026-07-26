@@ -11,7 +11,7 @@
 //!
 //! Erfolg = „Anmeldung erfolgreich". Falsches Passwort = „Anmeldung abgelehnt".
 
-use servercontrol_core::{store_password, OpCtx, Secret, ServerControl, ServerProfile};
+use servercontrol_core::{store_password, ModStatus, OpCtx, Secret, ServerControl, ServerProfile};
 use url::Url;
 
 #[tokio::main]
@@ -44,6 +44,21 @@ async fn main() {
             match sc.state().await {
                 Ok(state) => println!("Status: {state:?}"),
                 Err(e) => println!("Status konnte nicht gelesen werden: {e}"),
+            }
+            match sc.list_mods().await {
+                Ok(mods) => {
+                    let active = mods
+                        .iter()
+                        .filter(|m| m.status == ModStatus::Active)
+                        .count();
+                    let dlc = mods.iter().filter(|m| m.is_dlc).count();
+                    println!(
+                        "Mods: {} gesamt ({active} aktiv, {} inaktiv, {dlc} DLC)",
+                        mods.len(),
+                        mods.len() - active,
+                    );
+                }
+                Err(e) => println!("Mods konnten nicht gelesen werden: {e}"),
             }
             match sc.logout().await {
                 Ok(()) => println!("Abgemeldet."),

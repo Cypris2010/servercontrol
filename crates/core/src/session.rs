@@ -124,6 +124,11 @@ impl Session {
         parse_state(&self.home().await?)
     }
 
+    /// Aktive und inaktive Mods lesen (Pflichtenheft 10.5 LH).
+    pub(crate) async fn list_mods(&self) -> Result<Vec<crate::model::ServerMod>> {
+        Ok(crate::mods::parse_mods(&self.home().await?))
+    }
+
     /// Authentifizierten GET der Home-Seite; erneuert die Sitzung **einmal transparent**, falls
     /// sie abgelaufen ist (Login-Formular zurück statt Home) — reaktiv, kein Pollen (Kap. 6).
     async fn home(&self) -> Result<String> {

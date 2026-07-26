@@ -80,7 +80,7 @@ impl ServerControl {
     // --- Mods (F3/F4) ---
 
     pub async fn list_mods(&self) -> Result<Vec<ServerMod>> {
-        todo!()
+        self.session.list_mods().await
     }
 
     /// Nur bei **gestopptem** Server möglich (sonst `Error::ServerRunning`).
