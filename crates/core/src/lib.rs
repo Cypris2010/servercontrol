@@ -89,6 +89,16 @@ impl ServerControl {
         self.session.set_active(activate, deactivate).await
     }
 
+    /// Mod über das Web-Panel hochladen (bis 1,71 GB; darüber `NoFileAccess` → FTP nötig).
+    pub async fn upload_mod(&self, path: &std::path::Path) -> Result<()> {
+        self.session.upload_mod(path).await
+    }
+
+    /// Mod löschen — nur bei **gestopptem** Server (sonst `Error::ServerRunning`).
+    pub async fn delete_mod(&self, file_name: &str) -> Result<()> {
+        self.session.delete_mod(file_name).await
+    }
+
     // --- Steuerung (F6) — Voll-Formular-Umlauf, Ergebnis am Zustand belegt ---
 
     pub async fn start(&self, _ctx: &OpCtx) -> Result<()> {

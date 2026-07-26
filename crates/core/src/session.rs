@@ -14,6 +14,7 @@
 //! Ein `User-Agent` wird gesetzt (reqwest sendet per Default keinen); für die Sitzung ist er
 //! nicht erforderlich (verifiziert), aber er kennzeichnet den Client sauber.
 
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -36,6 +37,10 @@ const POLL_INTERVAL: Duration = Duration::from_secs(3);
 const START_TIMEOUT: Duration = Duration::from_secs(300);
 /// Zeitgrenze fürs Herunterfahren.
 const STOP_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// Web-Upload-Grenze des Panels („Maximal allowed upload size is 1.71 GB"). Konservativ als
+/// dezimale GB angesetzt; größere Dateien brauchen FTP/SFTP (`NoFileAccess`, MZ4).
+const MAX_WEB_UPLOAD: u64 = 1_710_000_000;
 
 /// Authentifizierte HTTP-Sitzung gegen ein FS25-Web-Panel.
 ///
@@ -135,6 +140,81 @@ impl Session {
     /// Aktive und inaktive Mods lesen (Pflichtenheft 10.5 LH).
     pub(crate) async fn list_mods(&self) -> Result<Vec<crate::model::ServerMod>> {
         Ok(crate::mods::parse_mods(&self.home().await?))
+    }
+
+    /// Einen Mod löschen — **nur bei gestopptem Server** (Kap. 7.3 LH). Auf `mods.html` trägt
+    /// jeder Mod einen Löschknopf `deleteactive|deleteinactive=<Datei>`. Q3: danach muss der Mod
+    /// aus der Liste verschwunden sein, sonst `NotProven`.
+    pub(crate) async fn delete_mod(&self, file_name: &str) -> Result<()> {
+        let mods_url = self.mods_page_url()?;
+        let page = self.get_text(mods_url.clone()).await?;
+        if matches!(parse_state(&page)?, ServerState::Online { .. }) {
+            return Err(Error::ServerRunning);
+        }
+        let field = crate::mods::find_delete_button(&page, file_name).ok_or_else(|| {
+            Error::FormMismatch(format!("Kein Löschknopf für {file_name} gefunden"))
+        })?;
+        self.send(
+            self.client
+                .post(mods_url)
+                .form(&[(field.as_str(), file_name)]),
+        )
+        .await?;
+
+        let gone = !self
+            .list_mods()
+            .await?
+            .iter()
+            .any(|m| m.file_name == file_name);
+        if gone {
+            Ok(())
+        } else {
+            Err(Error::NotProven)
+        }
+    }
+
+    /// Einen Mod über das Web-Panel hochladen (`modUpload`, multipart). Bis 1,71 GB; darüber
+    /// `NoFileAccess` (dann FTP/SFTP nötig, MZ4). Q3: danach muss der Mod in der Liste stehen.
+    pub(crate) async fn upload_mod(&self, path: &Path) -> Result<()> {
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| Error::Parse("ungültiger Dateiname".to_string()))?
+            .to_string();
+        let bytes = tokio::fs::read(path)
+            .await
+            .map_err(|e| Error::Parse(format!("Datei nicht lesbar: {e}")))?;
+        if bytes.len() as u64 > MAX_WEB_UPLOAD {
+            return Err(Error::NoFileAccess);
+        }
+
+        let url = self.mods_page_url()?;
+        let part = reqwest::multipart::Part::bytes(bytes)
+            .file_name(file_name.clone())
+            .mime_str("application/zip")
+            .map_err(map_reqwest)?;
+        let form = reqwest::multipart::Form::new()
+            .part("file", part)
+            .text("file_upload", "Upload");
+        self.send(self.client.post(url).multipart(form)).await?;
+
+        let present = self
+            .list_mods()
+            .await?
+            .iter()
+            .any(|m| m.file_name == file_name);
+        if present {
+            Ok(())
+        } else {
+            Err(Error::NotProven)
+        }
+    }
+
+    /// URL der Mod-Verwaltungsseite (`mods.html?lang=en`) — Ziel für Löschen und Upload.
+    fn mods_page_url(&self) -> Result<Url> {
+        self.base_url
+            .join("mods.html?lang=en")
+            .map_err(|e| Error::Parse(e.to_string()))
     }
 
     /// Spiel-Einstellungen lesen (nur bei gestopptem Server, Kap. 6.1).

@@ -11,7 +11,12 @@ thiserror = "1"
 url = { version = "2", features = ["serde"] }
 
 # HTTP-Sitzung mit Cookie-Speicher; rustls statt OpenSSL (plattformarm, Q5).
-reqwest = { version = "0.12", default-features = false, features = ["cookies", "rustls-tls"] }
+# multipart für den Mod-Upload (modUpload-Formular).
+reqwest = { version = "0.12", default-features = false, features = [
+    "cookies",
+    "rustls-tls",
+    "multipart",
+] }
 # HTML auswerten (Login-Formular erkennen, status-indicator, Mod-Listen).
 scraper = "0.20"
 # OS-Credential-Store (Q1): Passwörter nur hier, nie im Repo/Log. Reines Rust-Krypto.
@@ -21,8 +26,8 @@ keyring = { version = "3", default-features = false, features = [
     "sync-secret-service",
     "crypto-rust",
 ] }
-# Warten auf Zustandswechsel bei start/stop/restart (Polling). reqwest bringt tokio ohnehin mit.
-tokio = { version = "1", features = ["time"] }
+# Warten auf Zustandswechsel (Polling) + Datei lesen fürs Hochladen. reqwest bringt tokio mit.
+tokio = { version = "1", features = ["time", "fs"] }
 
 [dev-dependencies]
 # Nur für das Livetest-Beispiel (examples/login.rs): async-Laufzeit.

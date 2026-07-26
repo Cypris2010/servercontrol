@@ -72,6 +72,23 @@ fn non_empty(s: String) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
+/// Name des Löschknopfs für eine Datei auf `mods.html` finden: `<button type="submit"
+/// name="deleteactive|deleteinactive" value="<Datei>">`. Rückgabe ist der `name` (Formularfeld),
+/// gepostet wird dann `<name>=<Datei>`. `None`, wenn kein Löschknopf existiert (Mod nicht da bzw.
+/// Server läuft — dann fehlen die Knöpfe).
+pub(crate) fn find_delete_button(html: &str, file_name: &str) -> Option<String> {
+    let doc = Html::parse_document(html);
+    let sel = Selector::parse(r#"button[type="submit"]"#).unwrap();
+    doc.select(&sel)
+        .find(|b| {
+            b.value().attr("value") == Some(file_name)
+                && b.value()
+                    .attr("name")
+                    .is_some_and(|n| n.starts_with("delete"))
+        })
+        .and_then(|b| b.value().attr("name").map(str::to_string))
+}
+
 /// Formularkörper zum Umschalten bauen: je Datei `<prefix><Datei>=on` (angehakte Checkbox),
 /// dazu der Absende-Knopf `<submit_name>=<submit_value>` — genau wie der Browser sendet.
 pub(crate) fn toggle_body(
@@ -187,6 +204,26 @@ mod tests {
     #[test]
     fn ohne_mod_formulare_leere_liste() {
         assert!(parse_mods("<html><body>nichts</body></html>").is_empty());
+    }
+
+    #[test]
+    fn findet_loeschknopf_aktiv_und_inaktiv() {
+        use super::find_delete_button;
+        let html = r#"
+          <form method="POST" action="mods.html?lang=en">
+            <button type="submit" name="deleteactive" value="FS25_a.zip">Delete</button>
+            <button type="submit" name="deleteinactive" value="b.dlc">Delete</button>
+            <button type="button">Details</button>
+          </form>"#;
+        assert_eq!(
+            find_delete_button(html, "FS25_a.zip").as_deref(),
+            Some("deleteactive")
+        );
+        assert_eq!(
+            find_delete_button(html, "b.dlc").as_deref(),
+            Some("deleteinactive")
+        );
+        assert_eq!(find_delete_button(html, "gibtsnicht.zip"), None);
     }
 
     #[test]
