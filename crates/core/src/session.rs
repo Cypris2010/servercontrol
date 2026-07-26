@@ -15,6 +15,7 @@
 //! nicht erforderlich (verifiziert), aber er kennzeichnet den Client sauber.
 
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use reqwest::header::COOKIE;
 use reqwest::{Client, RequestBuilder, Response};
@@ -28,6 +29,13 @@ use crate::Result;
 
 /// Name des Sitzungs-Cookies im FS-Panel.
 const SESSION_COOKIE: &str = "SessionID";
+
+/// Poll-Intervall beim Warten auf einen Zustandswechsel (start/stop/restart).
+const POLL_INTERVAL: Duration = Duration::from_secs(3);
+/// Zeitgrenze fürs Hochfahren — großzügig, da viele Mods das Laden verlängern.
+const START_TIMEOUT: Duration = Duration::from_secs(300);
+/// Zeitgrenze fürs Herunterfahren.
+const STOP_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// Authentifizierte HTTP-Sitzung gegen ein FS25-Web-Panel.
 ///
@@ -188,6 +196,73 @@ impl Session {
         form_action(html, form_name)
             .and_then(|a| self.base_url.join(&a).ok())
             .ok_or_else(|| Error::FormMismatch(format!("Formular {form_name} nicht gefunden")))
+    }
+
+    // --- Serversteuerung (F6) — Voll-Formular-Umlauf, Ergebnis am Zustand belegt ---
+
+    /// Server starten (offline → online). Idempotent: läuft er schon, `Ok`.
+    pub(crate) async fn start(&self) -> Result<()> {
+        let home = self.home().await?;
+        if matches!(parse_state(&home)?, ServerState::Online { .. }) {
+            return Ok(());
+        }
+        self.submit_configuration(&home, "start_server", "Start")
+            .await?;
+        self.wait_until_online(true, START_TIMEOUT).await
+    }
+
+    /// Server stoppen (online → offline). Idempotent: ist er schon aus, `Ok`.
+    pub(crate) async fn stop(&self) -> Result<()> {
+        let home = self.home().await?;
+        if matches!(parse_state(&home)?, ServerState::Offline) {
+            return Ok(());
+        }
+        self.submit_configuration(&home, "stop_server", "Stop")
+            .await?;
+        self.wait_until_online(false, STOP_TIMEOUT).await
+    }
+
+    /// Server neu starten (online → offline → online). Nur bei laufendem Server (sonst fehlt
+    /// `restart_server` im Formular → `FormMismatch`).
+    pub(crate) async fn restart(&self) -> Result<()> {
+        let home = self.home().await?;
+        self.submit_configuration(&home, "restart_server", "Restart")
+            .await?;
+        // Übergang belegen: erst offline (fährt runter), dann wieder online.
+        self.wait_until_online(false, STOP_TIMEOUT).await?;
+        self.wait_until_online(true, START_TIMEOUT).await
+    }
+
+    /// `configuration`-Formular voll zurücksenden und den gewünschten Absende-Knopf ergänzen.
+    /// Vor dem POST prüfen, dass der Knopf existiert (Q4) — sonst `FormMismatch`. Der Body (mit
+    /// den Klartext-Passwörtern) wird **nie** protokolliert.
+    async fn submit_configuration(&self, home: &str, button: &str, value: &str) -> Result<()> {
+        let action = self.form_url(home, "configuration")?;
+        if !crate::settings::form_has_field(home, "configuration", button) {
+            return Err(Error::FormMismatch(format!(
+                "{button} nicht im configuration-Formular (falscher Serverzustand?)"
+            )));
+        }
+        let mut body = crate::settings::configuration_body(home)?;
+        body.push((button.to_string(), value.to_string()));
+        self.send(self.client.post(action).form(&body)).await?;
+        Ok(())
+    }
+
+    /// Auf den gewünschten Laufzeitzustand warten (Ergebnis-Verifikation, Q3). Pollt `state`
+    /// bis zum Ziel oder bis `timeout` — dann `NotProven` (abgesetzt, aber nicht bestätigt).
+    async fn wait_until_online(&self, want_online: bool, timeout: Duration) -> Result<()> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let online = matches!(self.state().await?, ServerState::Online { .. });
+            if online == want_online {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(Error::NotProven);
+            }
+            tokio::time::sleep(POLL_INTERVAL).await;
+        }
     }
 
     /// Authentifizierten GET der Home-Seite; erneuert die Sitzung **einmal transparent**, falls

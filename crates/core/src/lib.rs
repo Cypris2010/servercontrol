@@ -91,13 +91,13 @@ impl ServerControl {
     // --- Steuerung (F6) — Voll-Formular-Umlauf, Ergebnis am Zustand belegt ---
 
     pub async fn start(&self, _ctx: &OpCtx) -> Result<()> {
-        todo!()
+        self.session.start().await
     }
     pub async fn stop(&self, _ctx: &OpCtx) -> Result<()> {
-        todo!()
+        self.session.stop().await
     }
     pub async fn restart(&self, _ctx: &OpCtx) -> Result<()> {
-        todo!()
+        self.session.restart().await
     }
 
     // --- Spieleinstellungen (Kann/G6) ---

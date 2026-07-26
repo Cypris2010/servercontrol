@@ -21,6 +21,8 @@ keyring = { version = "3", default-features = false, features = [
     "sync-secret-service",
     "crypto-rust",
 ] }
+# Warten auf Zustandswechsel bei start/stop/restart (Polling). reqwest bringt tokio ohnehin mit.
+tokio = { version = "1", features = ["time"] }
 
 [dev-dependencies]
 # Nur für das Livetest-Beispiel (examples/login.rs): async-Laufzeit.
