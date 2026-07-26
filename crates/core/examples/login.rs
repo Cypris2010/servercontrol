@@ -1,13 +1,12 @@
-//! Wegwerf-Livetest für Schritt 1: prüft den echten Login gegen einen FS25-Server.
+//! Livecheck: Login + Status gegen einen echten FS25-Server.
 //!
-//! Das Passwort wird **nur** aus der Umgebungsvariablen `SC_PASSWORD` gelesen — es steht
-//! nirgends im Code und wird nie ausgegeben. Ablauf:
-//!   1. Passwort in den OS-Credential-Store legen (wie es die App später auch tut),
-//!   2. damit `connect` ausführen (echter GET+POST-Login),
-//!   3. `logout`.
+//! Das Passwort liegt im OS-Credential-Store (Schlüssel `livetest/web`) und wird von dort
+//! gelesen — es steht nie im Code und wird nie ausgegeben. `SC_PASSWORD` ist **optional**:
+//!   - **gesetzt:** das Passwort wird (neu) im Store hinterlegt, dann Login (Erst-Einrichtung),
+//!   - **nicht gesetzt:** es wird das **bereits hinterlegte** Passwort verwendet.
 //!
-//! Ausführen (in deinem Terminal):
-//!   SC_URL="http://<host>:7999/index.html" SC_USER=admin SC_PASSWORD='...' \
+//! So lässt sich der Livecheck nach einmaliger Einrichtung ohne Passwort wiederholen:
+//!   SC_URL="http://<host>:7999/index.html" SC_USER=admin \
 //!     cargo run -p servercontrol-core --example login
 //!
 //! Erfolg = „Anmeldung erfolgreich". Falsches Passwort = „Anmeldung abgelehnt".
@@ -20,13 +19,15 @@ async fn main() {
     let base_url =
         std::env::var("SC_URL").expect("SC_URL setzen, z. B. http://host:7999/index.html");
     let username = std::env::var("SC_USER").unwrap_or_else(|_| "admin".to_string());
-    let password = std::env::var("SC_PASSWORD").expect("SC_PASSWORD in der Shell setzen");
 
     let credential_key = "livetest/web";
 
-    // Passwort in den Credential-Store (danach kennt der Code nur noch den Schlüssel).
-    store_password(credential_key, Secret::new(password))
-        .expect("Passwort speichern fehlgeschlagen");
+    // SC_PASSWORD optional: gesetzt → einmal im Store hinterlegen; sonst den vorhandenen
+    // Eintrag nutzen (Code liest ihn ohnehin nur über den Schlüssel).
+    if let Ok(password) = std::env::var("SC_PASSWORD") {
+        store_password(credential_key, Secret::new(password))
+            .expect("Passwort speichern fehlgeschlagen");
+    }
 
     let profile = ServerProfile {
         name: "Livetest".to_string(),
