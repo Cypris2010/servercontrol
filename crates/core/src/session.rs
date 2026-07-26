@@ -244,11 +244,21 @@ impl Session {
             ("epoch".to_string(), epoch.to_string()),
         ];
         // Long-Poll: am Dateiende blockiert der Server bis neue Zeilen kommen. Per-Request-Timeout
-        // setzen; läuft es ab, gab es nichts Neues → leerer Abschnitt, `offset` unverändert.
+        // setzen; läuft es ab **oder** kappt der Server die wartende Verbindung, gab es einfach
+        // nichts Neues → leerer Abschnitt, `offset` unverändert (der Aufrufer pollt weiter). Das
+        // ist beim Tailing normal und kein Fehler; eine echte Störung zeigt sich an
+        // `state()`/`list_logs`, nicht am Log-Tail.
         let req = self.client.post(url).form(&body).timeout(LONGPOLL_TIMEOUT);
-        match self.send_raw(req).await {
-            Ok(resp) => crate::logs::parse_chunk(&resp.text().await.map_err(map_reqwest)?),
-            Err(e) if e.is_timeout() => Ok(crate::model::LogChunk {
+        // Senden UND Body-Lesen gemeinsam: der Server kann die wartende Verbindung auch erst
+        // beim Lesen des Body kappen.
+        let json: reqwest::Result<String> = async {
+            let resp = self.send_raw(req).await?;
+            resp.text().await
+        }
+        .await;
+        match json {
+            Ok(text) => crate::logs::parse_chunk(&text),
+            Err(e) if is_longpoll_end(&e) => Ok(crate::model::LogChunk {
                 content: String::new(),
                 end_offset: offset,
                 active: true,
@@ -576,6 +586,13 @@ fn map_reqwest(e: reqwest::Error) -> Error {
     } else {
         Error::Network(e.to_string())
     }
+}
+
+/// Endete ein Log-Long-Poll ohne neue Daten? Wahr bei unserem Timeout **und** wenn der Server die
+/// wartende Verbindung kappt (Verbindungs-/Request-/Body-Fehler). Beim Tailing normal — der
+/// Aufrufer pollt dann einfach weiter.
+fn is_longpoll_end(e: &reqwest::Error) -> bool {
+    e.is_timeout() || e.is_connect() || e.is_request() || e.is_body()
 }
 
 #[cfg(test)]
