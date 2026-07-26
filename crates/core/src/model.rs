@@ -23,7 +23,7 @@ pub enum ModStatus {
 }
 
 /// Ein Mod im Serverbestand.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ServerMod {
     /// Kennung für `modactivate_`/`moddeactivate_` (Kap. 7.3 LH).
     pub file_name: String,

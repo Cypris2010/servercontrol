@@ -13,6 +13,7 @@
 
 use servercontrol_core::{store_password, ModStatus, OpCtx, Secret, ServerControl, ServerProfile};
 use url::Url;
+use uuid::Uuid;
 
 #[tokio::main]
 async fn main() {
@@ -20,20 +21,24 @@ async fn main() {
         std::env::var("SC_URL").expect("SC_URL setzen, z. B. http://host:7999/index.html");
     let username = std::env::var("SC_USER").unwrap_or_else(|_| "admin".to_string());
 
-    let credential_key = "livetest/web";
+    // Feste ID (kein `new_v4`), damit ein wiederholter Livecheck denselben Credential-Store-
+    // Eintrag findet.
+    let id = Uuid::nil();
+    let credential_key = ServerProfile::web_credential_key(id);
 
     // SC_PASSWORD optional: gesetzt → einmal im Store hinterlegen; sonst den vorhandenen
     // Eintrag nutzen (Code liest ihn ohnehin nur über den Schlüssel).
     if let Ok(password) = std::env::var("SC_PASSWORD") {
-        store_password(credential_key, Secret::new(password))
+        store_password(&credential_key, Secret::new(password))
             .expect("Passwort speichern fehlgeschlagen");
     }
 
     let profile = ServerProfile {
+        id,
         name: "Livetest".to_string(),
         base_url: Url::parse(&base_url).expect("SC_URL ist keine gültige URL"),
         username,
-        credential_key: credential_key.to_string(),
+        credential_key,
         accept_invalid_cert: false,
         file_access: None,
     };

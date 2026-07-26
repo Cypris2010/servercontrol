@@ -10,8 +10,24 @@
     <!-- Statusleiste (7.1): Serverwahl · Steuerung · Status -->
     <header class="statusbar">
       <div class="brand">🚜 Server Control</div>
-      <div class="server-pick">
-        <span id="server-name" class="server-name">— nicht verbunden —</span>
+      <div class="server-wrap" id="server-wrap">
+        <button
+          class="server-pick"
+          id="server-pick"
+          aria-haspopup="menu"
+          aria-expanded="false"
+        >
+          <span id="pick-dot" class="dot"></span>
+          <span id="server-name" class="server-name">— nicht verbunden —</span>
+          <span class="chev">▾</span>
+        </button>
+        <div class="server-menu" id="server-menu" role="menu" hidden>
+          <div id="server-menu-list"></div>
+          <button class="menu-item" id="menu-manage" role="menuitem">Server verwalten…</button>
+          <button class="menu-item danger" id="menu-disconnect" role="menuitem" hidden>
+            Verbindung trennen
+          </button>
+        </div>
       </div>
       <div class="status-area">
         <span id="status-badge" class="badge badge-off">nicht verbunden</span>
@@ -22,7 +38,7 @@
       <!-- Seitenleiste (G2–G6) -->
       <nav class="sidebar">
         <button class="nav-item active" data-view="overview">Übersicht</button>
-        <button class="nav-item" data-view="mods" disabled>Mods</button>
+        <button class="nav-item" data-view="mods">Mods</button>
         <button class="nav-item" data-view="deploy" disabled>Bereitstellen</button>
         <button class="nav-item" data-view="settings" disabled>Spieleinstellungen</button>
         <button class="nav-item" data-view="log" disabled>Log</button>
@@ -30,23 +46,11 @@
 
       <!-- Arbeitsbereich -->
       <main class="content">
-        <!-- Verbinden-Bildschirm (G1, Startzustand) -->
-        <section id="connect-view" class="view">
-          <h1>Mit Server verbinden</h1>
-          <p class="hint">
-            Erst-Einrichtung: Das Passwort muss einmalig im OS-Schlüsselbund liegen (Schlüssel
-            <code>livetest/web</code>). In dieser frühen Version wird es über den Livetest hinterlegt.
-          </p>
-          <form id="connect-form" class="form">
-            <label>Adresse
-              <input id="in-url" type="text" placeholder="http://host:7999/index.html" required />
-            </label>
-            <label>Benutzer
-              <input id="in-user" type="text" value="admin" required />
-            </label>
-            <button type="submit" id="btn-connect">Verbinden</button>
-          </form>
-          <p id="connect-error" class="error" hidden></p>
+        <!-- Leerzustand (G1, Startzustand / getrennt) -->
+        <section id="empty-view" class="view">
+          <h1>Nicht verbunden</h1>
+          <p class="hint">Wähle oder lege ein Serverprofil an, um dich zu verbinden.</p>
+          <button id="btn-open-manage" class="primary-btn">Server verwalten…</button>
         </section>
 
         <!-- Übersicht (nach Verbinden) -->
@@ -54,7 +58,6 @@
           <div class="toolbar">
             <h1>Übersicht</h1>
             <button id="btn-refresh" class="ghost">Aktualisieren</button>
-            <button id="btn-disconnect" class="ghost">Verbindung trennen</button>
           </div>
           <div class="cards">
             <div class="card">
@@ -73,7 +76,197 @@
             </div>
           </div>
         </section>
+
+        <!-- Mods (G2, Kap. 7.5) -->
+        <section id="mods-view" class="view" hidden>
+          <div class="toolbar">
+            <h1>Mods</h1>
+            <div id="mods-counts" class="counts"></div>
+            <button id="btn-mods-refresh" class="ghost">Aktualisieren</button>
+          </div>
+          <div id="mods-banner" class="banner" hidden>
+            <span
+              ><b>Server läuft.</b> Mods lassen sich nur bei gestopptem Server aktivieren,
+              deaktivieren oder löschen — die Liste bleibt sichtbar und durchsuchbar. Zum Ändern
+              erst stoppen.</span
+            >
+          </div>
+
+          <div class="mods-toolbar">
+            <div class="search">
+              <input id="mods-search" type="search" placeholder="Suchen nach Name oder Dateiname…" />
+            </div>
+            <div class="filters" id="mods-filters" role="group" aria-label="Nach Status filtern">
+              <button data-f="all" class="on">Alle</button>
+              <button data-f="active">Aktiv</button>
+              <button data-f="inactive">Inaktiv</button>
+              <button data-f="orphan">Karteileichen</button>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th class="c-sel">
+                    <input type="checkbox" id="mods-sel-all" aria-label="Alle auswählen" />
+                  </th>
+                  <th class="c-status sortable" data-k="status">Status<span class="arrow"></span></th>
+                  <th class="sortable" data-k="name">Name<span class="arrow"></span></th>
+                  <th class="c-ver sortable" data-k="ver">Version<span class="arrow"></span></th>
+                  <th class="sortable" data-k="author">Author<span class="arrow"></span></th>
+                  <th class="c-file sortable" data-k="file">Dateiname<span class="arrow"></span></th>
+                  <th class="c-size sortable" data-k="size">Größe<span class="arrow"></span></th>
+                  <th class="c-dlc">DLC</th>
+                  <th class="c-del"></th>
+                </tr>
+              </thead>
+              <tbody id="mods-rows"></tbody>
+            </table>
+          </div>
+          <p id="mods-error" class="error" hidden></p>
+        </section>
       </main>
+    </div>
+
+    <!-- Stapelaktionen (G2) -->
+    <div id="mods-actionbar" class="actionbar" hidden>
+      <span class="selinfo"><b id="mods-sel-count">0</b> ausgewählt</span>
+      <button id="mods-btn-deactivate" class="ghost" disabled>Deaktivieren</button>
+      <button id="mods-btn-activate" class="ghost primary" disabled>Aktivieren</button>
+      <button id="mods-btn-delete-sel" class="ghost danger" disabled>Löschen…</button>
+    </div>
+
+    <!-- Serverprofile verwalten (G1, Kap. 7.4) -->
+    <div id="manage-view" class="manage-backdrop" hidden>
+      <div class="manage">
+        <header class="manage-top">
+          <h2>Server verwalten</h2>
+          <button id="manage-close" class="ghost small" title="Schließen">Schließen</button>
+        </header>
+        <div class="manage-body">
+          <aside class="plist">
+            <div class="plist-head">Profile</div>
+            <div id="profile-list"></div>
+            <button id="btn-new-profile" class="ghost small newprofile">+ Neues Profil</button>
+          </aside>
+
+          <section class="peditor">
+            <h3 id="edit-title">Neues Profil</h3>
+            <p class="hint small">
+              Zugangsdaten gehen in den OS-Schlüsselbund, nie in eine Datei der App.
+            </p>
+
+            <form id="profile-form" autocomplete="off">
+              <div class="sec">
+                <div class="sec-title">Web-Zugang</div>
+                <div class="field">
+                  <label>Profilname *</label>
+                  <input class="inp" id="pf-name" placeholder="z. B. Mein Server" />
+                </div>
+                <div class="field">
+                  <label>Adresse *</label>
+                  <div class="row2">
+                    <select class="inp" id="pf-proto">
+                      <option value="http">http://</option>
+                      <option value="https">https://</option>
+                    </select>
+                    <input class="inp mono" id="pf-addr" placeholder="host:port/index.html" />
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Benutzer *</label>
+                  <input class="inp" id="pf-user" placeholder="admin" />
+                </div>
+                <div class="field">
+                  <label>Passwort <span id="pf-pass-req">*</span></label>
+                  <div class="pw">
+                    <input class="inp" id="pf-pass" type="password" placeholder="Passwort eingeben" />
+                    <button type="button" class="eye" data-eye="pf-pass">Anzeigen</button>
+                  </div>
+                </div>
+                <label class="check">
+                  <input type="checkbox" id="pf-cert" />
+                  Ungültiges/selbstsigniertes Zertifikat akzeptieren
+                  <span class="hint-inline">(gemietete Server)</span>
+                </label>
+              </div>
+
+              <div class="sec">
+                <div class="sec-title">
+                  Datei-Zugang (FTP/SFTP)
+                  <label class="switchrow"><input type="checkbox" id="pf-ftp" /> einrichten</label>
+                </div>
+                <p class="hint small">
+                  Für Uploads über 1,71 GB und Dateizugriff. Die eigentliche Übertragung ist noch
+                  nicht umgesetzt — hier lässt sich der Zugang schon hinterlegen.
+                </p>
+                <div class="ftp-body" id="ftp-body" hidden>
+                  <div class="field">
+                    <div class="row2 even">
+                      <div>
+                        <label>Protokoll</label>
+                        <select class="inp" id="pf-ftp-proto">
+                          <option value="ftp">FTP</option>
+                          <option value="sftp">SFTP</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label>Host *</label>
+                        <input class="inp mono" id="pf-ftp-host" placeholder="host" />
+                      </div>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <div class="row2 even">
+                      <div>
+                        <label>Port *</label>
+                        <input class="inp mono" id="pf-ftp-port" placeholder="21 / 22" />
+                      </div>
+                      <div>
+                        <label>Benutzer *</label>
+                        <input class="inp" id="pf-ftp-user" placeholder="Benutzer" />
+                      </div>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>Passwort <span id="pf-ftp-pass-req">*</span></label>
+                    <div class="pw">
+                      <input class="inp" id="pf-ftp-pass" type="password" placeholder="Passwort eingeben" />
+                      <button type="button" class="eye" data-eye="pf-ftp-pass">Anzeigen</button>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>Mods-Pfad auf dem Server *</label>
+                    <input class="inp mono" id="pf-ftp-mods-path" placeholder="/config/…/mods" />
+                  </div>
+                </div>
+              </div>
+
+              <p id="profile-error" class="error" hidden></p>
+
+              <div class="editor-foot">
+                <button type="button" id="pf-delete" class="ghost danger" hidden>Profil löschen</button>
+                <div class="grow"></div>
+                <button type="button" id="pf-connect" class="ghost" hidden>Verbinden</button>
+                <button type="submit" id="pf-save" class="primary-btn">Speichern</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bestätigungsdialog für eingreifende Aktionen (7.10) -->
+    <div id="confirm-modal" class="modal-backdrop" hidden>
+      <div class="modal">
+        <h3 id="confirm-title"></h3>
+        <p id="confirm-body"></p>
+        <div class="modal-actions">
+          <button id="confirm-cancel" class="ghost">Abbrechen</button>
+          <button id="confirm-ok" class="primary-btn">Bestätigen</button>
+        </div>
+      </div>
     </div>
 
     <script type="module" src="main.js"></script>

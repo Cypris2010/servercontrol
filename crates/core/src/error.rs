@@ -57,4 +57,8 @@ pub enum Error {
     /// Auswertungsfehler (HTML/JSON unerwartet aufgebaut).
     #[error("Auswertungsfehler: {0}")]
     Parse(String),
+
+    /// Profil-/Einstellungsdatei nicht lesbar oder schreibbar (Kap. 8.5).
+    #[error("Speicherfehler: {0}")]
+    Storage(String),
 }

@@ -10,6 +10,7 @@ pub mod error;
 pub mod model;
 pub mod profile;
 pub mod secret;
+pub mod store;
 
 // Interne Bausteine (Projektstruktur, Pflichtenheft Kap. 3).
 mod credentials;
@@ -32,6 +33,8 @@ pub use model::{
 };
 pub use profile::{FileAccess, FileProtocol, ServerProfile};
 pub use secret::Secret;
+pub use store::AppSettings;
+pub use uuid::Uuid as ProfileId;
 
 /// Bequemer Ergebnistyp der Bibliothek.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -41,6 +44,43 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// hält es nie im Repo oder in Logs.
 pub fn store_password(credential_key: &str, password: Secret) -> Result<()> {
     credentials::store(credential_key, &password)
+}
+
+/// Alle Profile laden (Kap. 8.1) — ohne Passwörter, die liegen getrennt im Credential-Store.
+pub fn load_profiles() -> Result<Vec<ServerProfile>> {
+    store::load_profiles()
+}
+
+/// Alle Profile speichern (Kap. 8.5, atomar).
+pub fn save_profiles(profiles: &[ServerProfile]) -> Result<()> {
+    store::save_profiles(profiles)
+}
+
+/// Anwendungseinstellungen laden (zuletzt aktives Profil, Theme, Sprache).
+pub fn load_settings() -> Result<AppSettings> {
+    store::load_settings()
+}
+
+/// Anwendungseinstellungen speichern.
+pub fn save_settings(settings: &AppSettings) -> Result<()> {
+    store::save_settings(settings)
+}
+
+/// Ob für einen Credential-Store-Schlüssel bereits ein Passwort hinterlegt ist — für die GUI
+/// (Platzhaltertext „gespeichert" vs. „Passwort eingeben", Kap. 7.4), ohne das Passwort selbst
+/// preiszugeben.
+pub fn has_password(credential_key: &str) -> bool {
+    credentials::load(credential_key).is_ok()
+}
+
+/// Ein Profil und seine Credential-Store-Einträge (Web + ggf. FTP/SFTP) vollständig entfernen
+/// (Kap. 8.4: keine verwaisten Passwörter zurücklassen).
+pub fn delete_profile_credentials(profile: &ServerProfile) -> Result<()> {
+    credentials::delete(&ServerProfile::web_credential_key(profile.id))?;
+    if profile.file_access.is_some() {
+        credentials::delete(&ServerProfile::ftp_credential_key(profile.id))?;
+    }
+    Ok(())
 }
 
 /// Verbindung/Sitzung zu einem FS25-Dedicated-Server (Pflichtenheft 4.3).

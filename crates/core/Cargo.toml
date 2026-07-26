@@ -30,6 +30,10 @@ keyring = { version = "3", default-features = false, features = [
 tokio = { version = "1", features = ["time", "fs"] }
 # Log-Inhalt kommt base64-kodiert vom Live-Log-Endpunkt (MZ5).
 base64 = "0.22"
+# Plattformkonformer Konfigurationsordner (Kap. 8.3) — nicht geraten, sondern ermittelt.
+directories = "5"
+# Stabile Profil-ID als Credential-Store-Schlüssel (Kap. 8.4), unabhängig von Adresse/Nutzer.
+uuid = { version = "1", features = ["v4", "serde"] }
 
 [dev-dependencies]
 # Nur für das Livetest-Beispiel (examples/login.rs): async-Laufzeit.

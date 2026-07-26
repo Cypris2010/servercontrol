@@ -1,10 +1,15 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
+use uuid::Uuid;
 
 /// Verbindungsprofil (Pflichtenheft 4.2). Enthält **kein** Passwort — nur den Verweis
 /// (`credential_key`) in den OS-Credential-Store.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerProfile {
+    /// Stabile Kennung, unabhängig von Name/Adresse/Benutzer — Grundlage des
+    /// Credential-Store-Schlüssels (Kap. 8.4: Adress-/Benutzeränderung darf den
+    /// gespeicherten Zugang nicht verwaisen lassen).
+    pub id: Uuid,
     pub name: String,
     /// Adresse mit Schema `http` **oder** `https` (Kap. 8 LH: Schema folgenlos).
     pub base_url: Url,
@@ -17,6 +22,18 @@ pub struct ServerProfile {
     /// Optionaler FTP/SFTP-Zugang für große Uploads/Dateizugriff (MZ4).
     #[serde(default)]
     pub file_access: Option<FileAccess>,
+}
+
+impl ServerProfile {
+    /// Credential-Store-Konto für den Web-Login, aus der stabilen `id` abgeleitet (Kap. 8.4).
+    pub fn web_credential_key(id: Uuid) -> String {
+        format!("{id}/web")
+    }
+
+    /// Credential-Store-Konto für den FTP/SFTP-Zugang, aus der stabilen `id` abgeleitet.
+    pub fn ftp_credential_key(id: Uuid) -> String {
+        format!("{id}/ftp")
+    }
 }
 
 /// FTP/SFTP-Zugang zum Serverordner (MZ4). Oft anderer Host/Port als das Web-Panel und mit
