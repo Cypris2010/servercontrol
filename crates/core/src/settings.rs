@@ -16,6 +16,8 @@
 use scraper::{ElementRef, Html, Selector};
 
 use crate::error::Error;
+use crate::model::{Difficulty, GameSettings, PauseIfEmpty};
+use crate::secret::Secret;
 use crate::Result;
 
 /// Felder, die nur bei **leerem** Savegame editierbar sind (checkSavegame). Bei bestehendem
@@ -65,6 +67,74 @@ pub(crate) fn configuration_body(html: &str) -> Result<Vec<(String, String)>> {
         }
     }
     Ok(body)
+}
+
+/// Spiel-Einstellungen aus dem `configuration`-Formular lesen (Kap. 6.1). Funktioniert **bei
+/// gestopptem Server**, wo die Felder als editierbares Formular vorliegen; online zeigt das Panel
+/// die Werte nur als Text (kein Formular) → `FormMismatch`. `admin_password`/`game_password`
+/// landen im `Secret` und werden nie geloggt.
+pub(crate) fn parse_settings(html: &str) -> Result<GameSettings> {
+    let doc = Html::parse_document(html);
+    let form = doc
+        .select(&Selector::parse(r#"form[name="configuration"]"#).unwrap())
+        .next()
+        .ok_or_else(|| Error::FormMismatch("configuration-Formular fehlt".to_string()))?;
+
+    // Kernfeld als Formularfeld vorhanden? Sonst ist der Server vermutlich online (nur Textanzeige).
+    if field_value(form, "game_name").is_none() {
+        return Err(Error::FormMismatch(
+            "Einstellungen nur bei gestopptem Server lesbar".to_string(),
+        ));
+    }
+    let val = |name: &str| field_value(form, name);
+
+    Ok(GameSettings {
+        game_name: val("game_name").unwrap_or_default(),
+        admin_password: Secret::new(val("admin_password").unwrap_or_default()),
+        game_password: Secret::new(val("game_password").unwrap_or_default()),
+        savegame: parse_num(form, "savegame").unwrap_or(1),
+        map_start: val("map_start").unwrap_or_default(),
+        initial_money: parse_num(form, "initialMoney").unwrap_or(0),
+        initial_loan: parse_num(form, "initialLoan").unwrap_or(0),
+        economic_difficulty: val("economicDifficulty")
+            .and_then(|v| Difficulty::from_code(&v))
+            .unwrap_or(Difficulty::Easy),
+        server_port: parse_num(form, "server_port").unwrap_or(0),
+        max_player: parse_num(form, "max_player").unwrap_or(0),
+        mp_language: val("mp_language").unwrap_or_default(),
+        auto_save_interval: parse_num(form, "auto_save_interval").unwrap_or(0),
+        stats_interval: parse_num(form, "stats_interval").unwrap_or(0),
+        pause_game_if_empty: val("pause_game_if_empty")
+            .and_then(|v| PauseIfEmpty::from_code(&v))
+            .unwrap_or(PauseIfEmpty::No),
+        crossplay_allowed: checkbox_checked(form, "crossplay_allowed"),
+    })
+}
+
+/// Zahlenwert eines Formularfelds (generisch über den Zieltyp).
+fn parse_num<T: std::str::FromStr>(form: ElementRef, name: &str) -> Option<T> {
+    field_value(form, name).and_then(|v| v.trim().parse().ok())
+}
+
+/// Wert eines Formularfelds: `value` eines `<input>` oder die gewählte Option eines `<select>`.
+fn field_value(form: ElementRef, name: &str) -> Option<String> {
+    let input = Selector::parse(&format!(r#"input[name="{name}"]"#)).unwrap();
+    if let Some(el) = form.select(&input).next() {
+        return el.value().attr("value").map(str::to_string);
+    }
+    let opt = Selector::parse(&format!(r#"select[name="{name}"] option[selected]"#)).unwrap();
+    form.select(&opt)
+        .next()
+        .and_then(|o| o.value().attr("value").map(str::to_string))
+}
+
+/// Ist die Checkbox `name` angehakt?
+fn checkbox_checked(form: ElementRef, name: &str) -> bool {
+    let sel = Selector::parse(&format!(r#"input[name="{name}"]"#)).unwrap();
+    form.select(&sel)
+        .next()
+        .map(|e| e.value().attr("checked").is_some())
+        .unwrap_or(false)
 }
 
 /// Existiert im Formular `form_name` ein Steuerelement mit dem Namen `field`? (Versionstoleranz
@@ -164,5 +234,41 @@ mod tests {
     fn form_has_field_erkennt_absendeknopf() {
         assert!(form_has_field(EXISTING, "configuration", "start_server"));
         assert!(!form_has_field(EXISTING, "configuration", "stop_server"));
+    }
+
+    #[test]
+    fn liest_einstellungen() {
+        use super::parse_settings;
+        use crate::model::{Difficulty, PauseIfEmpty};
+        // EXISTING um die restlichen Felder ergänzt (echtes Markup).
+        let html = EXISTING.replace(
+            r#"<input type="checkbox" name="crossplay_allowed" checked="checked">"#,
+            r#"<input type="text" name="server_port" value="10823">
+               <select name="mp_language"><option value="de" selected="selected">de</option></select>
+               <input type="text" name="auto_save_interval" value="30">
+               <input type="text" name="stats_interval" value="31536000">
+               <select name="pause_game_if_empty"><option value="2" selected="selected">Instantly</option></select>
+               <input type="checkbox" name="crossplay_allowed" checked="checked">"#,
+        );
+        let s = parse_settings(&html).unwrap();
+        assert_eq!(s.game_name, "ccc222");
+        assert_eq!(s.savegame, 2);
+        assert_eq!(s.economic_difficulty, Difficulty::Easy); // "1"
+        assert_eq!(s.server_port, 10823);
+        assert_eq!(s.max_player, 4);
+        assert_eq!(s.mp_language, "de");
+        assert_eq!(s.auto_save_interval, 30);
+        assert_eq!(s.stats_interval, 31_536_000);
+        assert_eq!(s.pause_game_if_empty, PauseIfEmpty::Instantly); // "2"
+        assert!(s.crossplay_allowed);
+        // Passwörter gelesen, aber Debug zeigt sie nicht.
+        assert_eq!(s.admin_password.expose(), "geheim1");
+        assert_eq!(format!("{:?}", s.admin_password), "Secret(***)");
+    }
+
+    #[test]
+    fn ohne_formular_fehler() {
+        use super::parse_settings;
+        assert!(parse_settings("<html><body>online, kein Formular</body></html>").is_err());
     }
 }

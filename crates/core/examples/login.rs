@@ -60,6 +60,10 @@ async fn main() {
                 }
                 Err(e) => println!("Mods konnten nicht gelesen werden: {e}"),
             }
+            match sc.read_settings().await {
+                Ok(s) => println!("Einstellungen: {s:?}"), // Secret-Debug zeigt Passwörter als ***
+                Err(e) => println!("Einstellungen nicht lesbar: {e}"),
+            }
             match sc.logout().await {
                 Ok(()) => println!("Abgemeldet."),
                 Err(e) => println!("Abmelden meldete: {e}"),

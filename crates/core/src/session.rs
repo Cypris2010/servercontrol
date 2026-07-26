@@ -137,6 +137,11 @@ impl Session {
         Ok(crate::mods::parse_mods(&self.home().await?))
     }
 
+    /// Spiel-Einstellungen lesen (nur bei gestopptem Server, Kap. 6.1).
+    pub(crate) async fn read_settings(&self) -> Result<crate::model::GameSettings> {
+        crate::settings::parse_settings(&self.home().await?)
+    }
+
     /// Mods aktivieren/deaktivieren — **nur bei gestopptem Server** (Kap. 7.3 LH).
     ///
     /// Deaktivieren läuft über das `ActiveMods`-Formular (`moddeactivate_<Datei>` +

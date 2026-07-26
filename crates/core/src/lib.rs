@@ -103,7 +103,7 @@ impl ServerControl {
     // --- Spieleinstellungen (Kann/G6) ---
 
     pub async fn read_settings(&self) -> Result<GameSettings> {
-        todo!()
+        self.session.read_settings().await
     }
     pub async fn save_settings(&self, _s: &GameSettings, _ctx: &OpCtx) -> Result<()> {
         todo!()

@@ -71,11 +71,34 @@ pub enum Difficulty {
     Hard = 3,
 }
 
+impl Difficulty {
+    /// Aus dem Formularwert (`economicDifficulty`): "1"/"2"/"3".
+    pub(crate) fn from_code(code: &str) -> Option<Self> {
+        match code.trim() {
+            "1" => Some(Self::Easy),
+            "2" => Some(Self::Normal),
+            "3" => Some(Self::Hard),
+            _ => None,
+        }
+    }
+}
+
 /// „Pause wenn leer" (Server-Werte).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PauseIfEmpty {
     No = 1,
     Instantly = 2,
+}
+
+impl PauseIfEmpty {
+    /// Aus dem Formularwert (`pause_game_if_empty`): "1"/"2".
+    pub(crate) fn from_code(code: &str) -> Option<Self> {
+        match code.trim() {
+            "1" => Some(Self::No),
+            "2" => Some(Self::Instantly),
+            _ => None,
+        }
+    }
 }
 
 /// Laufzeit-Kontext für lange Operationen: Abbruch + Fortschritt (Pflichtenheft 4.2).
