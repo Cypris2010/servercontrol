@@ -29,7 +29,7 @@ use session::Session;
 pub use error::Error;
 pub use model::{
     Difficulty, FieldOption, GameSettings, LogChunk, LogListing, LogSource, ModStatus, OpCtx,
-    PauseIfEmpty, Progress, ServerMod, ServerState, SettingsOptions,
+    PauseIfEmpty, Progress, ServerMod, ServerState, SettingsOptions, SettingsRow,
 };
 pub use profile::{FileAccess, FileProtocol, ServerProfile};
 pub use secret::Secret;
@@ -181,6 +181,13 @@ impl ServerControl {
     pub async fn read_settings_options(&self) -> Result<SettingsOptions> {
         self.session.read_settings_options().await
     }
+
+    /// Einstellungen als Textanzeige (G6, nur bei **laufendem** Server — dort liefert
+    /// [`Self::read_settings`] `Error::FormMismatch`, weil das Panel dort kein Formular zeigt).
+    pub async fn read_settings_summary(&self) -> Result<Vec<SettingsRow>> {
+        self.session.read_settings_summary().await
+    }
+
     pub async fn save_settings(&self, s: &GameSettings, _ctx: &OpCtx) -> Result<()> {
         self.session.save_settings(s).await
     }

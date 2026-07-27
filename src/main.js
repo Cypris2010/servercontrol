@@ -254,6 +254,156 @@ function initModsView() {
   $("mods-btn-delete-sel").addEventListener("click", () => deleteMods([...modsState.selected]));
 }
 
+// --- Spieleinstellungen (G6, Pflichtenheft 7.9) ---
+let settingsView = { online: false, settings: null, options: null, summary: null };
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function populateSelect(id, options, selectedValue) {
+  const el = $(id);
+  el.innerHTML = (options || [])
+    .map((o) => `<option value="${o.value}">${o.label}</option>`)
+    .join("");
+  el.value = String(selectedValue);
+}
+
+function statsIntervalHint(seconds) {
+  if (!seconds) return "";
+  const days = seconds / 86400;
+  if (days >= 1) {
+    const rounded = Math.round(days);
+    const note = days >= 30 ? " — Feed praktisch aus" : "";
+    return `≈ ${rounded} Tag${rounded === 1 ? "" : "e"}${note}`;
+  }
+  const hours = seconds / 3600;
+  return hours >= 1 ? `≈ ${Math.round(hours)} Std.` : "";
+}
+
+// Neues-Spiel-Felder (Map/Startgeld/Kredit/Schwierigkeit) sind nur bei einem **leeren**
+// Savegame-Slot editierbar — der Server erkennt das am Options-Text "- Empty" (Kap. 6,
+// checkSavegame). Rein optische Sperre hier; der eigentliche Server verifiziert beim Speichern.
+function updateNewGameFieldsLock() {
+  const opt = $("set-savegame").selectedOptions[0];
+  const empty = !!opt && opt.textContent.includes("- Empty");
+  ["set-map", "set-money", "set-loan", "set-difficulty"].forEach((id) => ($(id).disabled = !empty));
+  $("set-savegame-hint").textContent = empty
+    ? "Leerer Slot — Startbedingungen können gesetzt werden."
+    : "Belegter Spielstand — Startbedingungen sind gesperrt.";
+}
+
+function renderSettingsSummary(rows) {
+  $("settings-summary-rows").innerHTML = rows
+    .map((row) => {
+      if (row.is_secret) {
+        return `<tr><th>${escapeHtml(row.label)}</th><td>
+          <span class="secret-value" data-value="${escapeHtml(row.value)}">••••••••</span>
+          <button type="button" class="ghost small btn-reveal">Anzeigen</button>
+        </td></tr>`;
+      }
+      return `<tr><th>${escapeHtml(row.label)}</th><td>${escapeHtml(row.value)}</td></tr>`;
+    })
+    .join("");
+}
+
+function renderSettings() {
+  const { online, settings, options, summary } = settingsView;
+  $("settings-banner").hidden = !online;
+  $("settings-summary-wrap").hidden = !online || !summary;
+  $("settings-form").hidden = online || !settings;
+  if (online) {
+    if (summary) renderSettingsSummary(summary);
+    return;
+  }
+  if (!settings) return;
+
+  $("set-name").value = settings.game_name;
+  $("set-admin-pass").value = settings.admin_password;
+  $("set-game-pass").value = settings.game_password;
+
+  populateSelect("set-savegame", options.savegames, settings.savegame);
+  populateSelect("set-map", options.maps, settings.map_start);
+  populateSelect("set-money", options.initial_money, settings.initial_money);
+  populateSelect("set-loan", options.initial_loan, settings.initial_loan);
+  populateSelect("set-difficulty", options.economic_difficulty, settings.economic_difficulty);
+  updateNewGameFieldsLock();
+
+  $("set-port").value = settings.server_port;
+  populateSelect("set-max-player", options.max_player, settings.max_player);
+  populateSelect("set-language", options.mp_language, settings.mp_language);
+  $("set-crossplay").checked = settings.crossplay_allowed;
+
+  $("set-autosave").value = settings.auto_save_interval;
+  $("set-stats-interval").value = settings.stats_interval;
+  $("set-stats-hint").textContent = statsIntervalHint(settings.stats_interval);
+  populateSelect("set-pause", options.pause_game_if_empty, settings.pause_game_if_empty);
+}
+
+async function loadSettings() {
+  const err = $("settings-error");
+  err.hidden = true;
+  try {
+    settingsView = await invoke("settings_view");
+    renderSettings();
+  } catch (e) {
+    err.textContent = String(e);
+    err.hidden = false;
+  }
+}
+
+async function saveSettingsForm(ev) {
+  ev.preventDefault();
+  const err = $("settings-error");
+  err.hidden = true;
+  const settings = {
+    game_name: $("set-name").value.trim(),
+    admin_password: $("set-admin-pass").value,
+    game_password: $("set-game-pass").value,
+    savegame: parseInt($("set-savegame").value, 10),
+    map_start: $("set-map").value,
+    initial_money: parseInt($("set-money").value, 10),
+    initial_loan: parseInt($("set-loan").value, 10),
+    economic_difficulty: parseInt($("set-difficulty").value, 10),
+    server_port: parseInt($("set-port").value, 10),
+    max_player: parseInt($("set-max-player").value, 10),
+    mp_language: $("set-language").value,
+    auto_save_interval: parseInt($("set-autosave").value, 10),
+    stats_interval: parseInt($("set-stats-interval").value, 10),
+    pause_game_if_empty: parseInt($("set-pause").value, 10),
+    crossplay_allowed: $("set-crossplay").checked,
+  };
+  const btn = $("btn-settings-save");
+  btn.disabled = true;
+  try {
+    await invoke("save_settings", { settings });
+    await loadSettings();
+  } catch (e) {
+    err.textContent = String(e);
+    err.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function initSettingsView() {
+  $("btn-settings-refresh").addEventListener("click", loadSettings);
+  $("settings-form").addEventListener("submit", saveSettingsForm);
+  $("set-savegame").addEventListener("change", updateNewGameFieldsLock);
+  $("settings-summary-rows").addEventListener("click", (e) => {
+    const btn = e.target.closest(".btn-reveal");
+    if (!btn) return;
+    const span = btn.previousElementSibling;
+    const showing = btn.textContent === "Verbergen";
+    span.textContent = showing ? "••••••••" : span.dataset.value;
+    btn.textContent = showing ? "Anzeigen" : "Verbergen";
+  });
+}
+
 // --- Serverprofile (G1, Pflichtenheft 7.4) ---
 let profiles = []; // ProfileDto[] (ohne Passwort) aus list_profiles
 let activeProfileId = null; // Profil-ID der aktuell verbundenen Sitzung, sonst null
@@ -263,11 +413,13 @@ function show(view) {
   $("empty-view").hidden = view !== "empty";
   $("overview-view").hidden = view !== "overview";
   $("mods-view").hidden = view !== "mods";
+  $("settings-view").hidden = view !== "settings";
   $("mods-actionbar").hidden = view !== "mods" || modsState.selected.size === 0;
   document
     .querySelectorAll(".nav-item")
     .forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   if (view === "mods") loadMods();
+  if (view === "settings") loadSettings();
 }
 
 function updateNavLocks() {
@@ -645,6 +797,7 @@ window.addEventListener("DOMContentLoaded", () => {
     }),
   );
   initModsView();
+  initSettingsView();
 
   // Statusleiste: Server-Dropdown (7.1)
   $("server-pick").addEventListener("click", (e) => {

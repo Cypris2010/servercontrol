@@ -43,7 +43,7 @@
         <button class="nav-item active" data-view="overview">Übersicht</button>
         <button class="nav-item" data-view="mods">Mods</button>
         <button class="nav-item" data-view="deploy" disabled>Bereitstellen</button>
-        <button class="nav-item" data-view="settings" disabled>Spieleinstellungen</button>
+        <button class="nav-item" data-view="settings">Spieleinstellungen</button>
         <button class="nav-item" data-view="log" disabled>Log</button>
       </nav>
 
@@ -128,6 +128,122 @@
             </table>
           </div>
           <p id="mods-error" class="error" hidden></p>
+        </section>
+
+        <!-- Spieleinstellungen (G6, Kap. 7.9) -->
+        <section id="settings-view" class="view" hidden>
+          <div class="toolbar">
+            <h1>Spieleinstellungen</h1>
+            <button id="btn-settings-refresh" class="ghost">Aktualisieren</button>
+          </div>
+          <div id="settings-banner" class="banner" hidden>
+            <span
+              ><b>Server läuft.</b> Nur lesbar — zum Ändern erst stoppen.</span
+            >
+          </div>
+
+          <div id="settings-summary-wrap" hidden>
+            <table class="settings-table">
+              <tbody id="settings-summary-rows"></tbody>
+            </table>
+          </div>
+
+          <form id="settings-form" class="settings-form" autocomplete="off" hidden>
+            <div class="sec card2">
+              <div class="sec-title">Identität</div>
+              <div class="field">
+                <label>Server-Name (im Spiel)</label>
+                <input class="inp" id="set-name" />
+              </div>
+              <div class="field">
+                <label>Admin-Passwort <span class="hint-inline">(= Web-Login)</span></label>
+                <div class="pw">
+                  <input class="inp" id="set-admin-pass" type="password" />
+                  <button type="button" class="eye" data-eye="set-admin-pass">Anzeigen</button>
+                </div>
+              </div>
+              <div class="field">
+                <label>Spiel-Passwort <span class="hint-inline">(für Mitspieler)</span></label>
+                <div class="pw">
+                  <input class="inp" id="set-game-pass" type="password" />
+                  <button type="button" class="eye" data-eye="set-game-pass">Anzeigen</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="sec card2">
+              <div class="sec-title">Spielwelt</div>
+              <div class="field">
+                <label>Savegame</label>
+                <select class="inp" id="set-savegame"></select>
+                <p class="hint small" id="set-savegame-hint"></p>
+              </div>
+              <div class="field">
+                <label>Startkarte</label>
+                <select class="inp" id="set-map"></select>
+              </div>
+              <div class="row2 even">
+                <div class="field">
+                  <label>Startgeld</label>
+                  <select class="inp" id="set-money"></select>
+                </div>
+                <div class="field">
+                  <label>Kredit</label>
+                  <select class="inp" id="set-loan"></select>
+                </div>
+              </div>
+              <div class="field">
+                <label>Schwierigkeit</label>
+                <select class="inp" id="set-difficulty"></select>
+              </div>
+            </div>
+
+            <div class="sec card2">
+              <div class="sec-title">Netzwerk &amp; Zugang</div>
+              <div class="row2 even">
+                <div class="field">
+                  <label>Server-Port</label>
+                  <input class="inp mono" id="set-port" type="number" min="1" max="65535" />
+                </div>
+                <div class="field">
+                  <label>Max. Spieler</label>
+                  <select class="inp" id="set-max-player"></select>
+                </div>
+              </div>
+              <div class="field">
+                <label>Sprache</label>
+                <select class="inp" id="set-language"></select>
+              </div>
+              <label class="check">
+                <input type="checkbox" id="set-crossplay" /> Crossplay erlaubt
+              </label>
+            </div>
+
+            <div class="sec card2">
+              <div class="sec-title">Automatik</div>
+              <div class="row2 even">
+                <div class="field">
+                  <label>Auto-Save (Minuten)</label>
+                  <input class="inp mono" id="set-autosave" type="number" min="0" />
+                </div>
+                <div class="field">
+                  <label>Web-API-Intervall (Sekunden)</label>
+                  <input class="inp mono" id="set-stats-interval" type="number" min="0" />
+                </div>
+              </div>
+              <p class="hint small" id="set-stats-hint"></p>
+              <div class="field">
+                <label>Pause wenn leer</label>
+                <select class="inp" id="set-pause"></select>
+              </div>
+            </div>
+
+            <p id="settings-error" class="error" hidden></p>
+            <div class="editor-foot">
+              <div class="grow"></div>
+              <button type="submit" id="btn-settings-save" class="primary-btn">Speichern</button>
+            </div>
+          </form>
         </section>
       </main>
     </div>

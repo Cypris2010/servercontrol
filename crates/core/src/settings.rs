@@ -16,7 +16,9 @@
 use scraper::{ElementRef, Html, Selector};
 
 use crate::error::Error;
-use crate::model::{Difficulty, FieldOption, GameSettings, PauseIfEmpty, SettingsOptions};
+use crate::model::{
+    Difficulty, FieldOption, GameSettings, PauseIfEmpty, SettingsOptions, SettingsRow,
+};
 use crate::secret::Secret;
 use crate::Result;
 
@@ -139,6 +141,59 @@ pub(crate) fn parse_settings_options(html: &str) -> Result<SettingsOptions> {
         mp_language: options_of(form, "mp_language"),
         pause_game_if_empty: options_of(form, "pause_game_if_empty"),
     })
+}
+
+/// Einstellungen als reine Textanzeige lesen — der Zustand bei **laufendem** Server (Kap. 6.1):
+/// das `configuration`-„Formular" enthält dort keine Steuerelemente, sondern Label/Wert-Paare
+/// als `div.row.column` (Label in `.column-label`, Wert im Geschwister-`div.medium-9.columns`).
+/// Generisch über alle Zeilen statt feste Feldliste (SZ1: robust gegenüber Server-Änderungen).
+pub(crate) fn parse_settings_readonly(html: &str) -> Result<Vec<SettingsRow>> {
+    let doc = Html::parse_document(html);
+    let form = doc
+        .select(&Selector::parse(r#"form[name="configuration"]"#).unwrap())
+        .next()
+        .ok_or_else(|| Error::FormMismatch("configuration-Anzeige fehlt".to_string()))?;
+
+    let row_sel = Selector::parse(".row.column").unwrap();
+    let label_sel = Selector::parse(".column-label").unwrap();
+    let value_sel = Selector::parse(".medium-9.columns").unwrap();
+
+    let rows: Vec<SettingsRow> = form
+        .select(&row_sel)
+        .filter_map(|row| {
+            let label = row
+                .select(&label_sel)
+                .next()?
+                .text()
+                .collect::<String>()
+                .trim()
+                .to_string();
+            if label.is_empty() || label == "Game" {
+                return None; // Spielname+Version steht schon in der Übersicht (state()).
+            }
+            let value = row
+                .select(&value_sel)
+                .next()?
+                .text()
+                .collect::<String>()
+                .replace('\u{a0}', "")
+                .trim()
+                .to_string();
+            let is_secret = label == "Administrator Password" || label == "Game Password";
+            Some(SettingsRow {
+                label,
+                value,
+                is_secret,
+            })
+        })
+        .collect();
+
+    if rows.is_empty() {
+        return Err(Error::FormMismatch(
+            "configuration-Anzeige ohne Zeilen".to_string(),
+        ));
+    }
+    Ok(rows)
 }
 
 /// Alle `<option>` eines `<select name=…>` als `(value, label)` lesen. Optionen ohne `value`
@@ -469,5 +524,43 @@ mod tests {
         assert_eq!(o.maps[1].value, "FS25_NFMarsch4fach.zip_SampleModMap");
         assert_eq!(o.maps[1].label, "NF Marsch 4fach");
         assert_eq!(o.savegames.len(), 1);
+    }
+
+    #[test]
+    fn liest_readonly_anzeige_bei_laufendem_server() {
+        use super::parse_settings_readonly;
+        // Echtes Markup vom laufenden Server (Auszug, Passwörter anonym) — online zeigt das
+        // Panel keine Steuerelemente, nur Label/Wert-Zeilen (Kap. 6.1).
+        let html = r#"
+          <form name="configuration" action="index.html?lang=en" method="POST">
+            <div class="row column table-even"><div class="medium-3 columns column-label">Game</div><div class="medium-9 columns">Farming Simulator 25 (1.19.0.0)</div></div>
+            <div class="row column table-odd"><div class="medium-3 columns column-label">Server Game Name</div><div class="medium-9 columns">ccc222&nbsp;</div></div>
+            <div class="row column table-even"><div class="medium-3 columns column-label">Administrator Password</div><div class="medium-9 columns">geheim1</div></div>
+            <div class="row column table-odd"><div class="medium-3 columns column-label">Game Password</div><div class="medium-9 columns">geheim2</div></div>
+            <div class="row column table-even"><div class="medium-3 columns column-label">Savegame Slot</div><div class="medium-9 columns">SAVEGAME  3</div></div>
+            <div class="row column table-odd"><div class="medium-3 columns column-label">Crossplay allowed</div><div class="medium-9 columns">Yes</div></div>
+            <div class="row column table-even text-right"><button type="submit" name="save_settings">Save</button></div>
+          </form>"#;
+        let rows = parse_settings_readonly(html).unwrap();
+        // "Game"-Zeile (Version) wird übersprungen, sie steht schon in der Übersicht.
+        assert_eq!(rows.len(), 5);
+        assert_eq!(rows[0].label, "Server Game Name");
+        assert_eq!(rows[0].value, "ccc222");
+        assert!(!rows[0].is_secret);
+        assert_eq!(rows[1].label, "Administrator Password");
+        assert_eq!(rows[1].value, "geheim1");
+        assert!(rows[1].is_secret);
+        assert_eq!(rows[2].label, "Game Password");
+        assert!(rows[2].is_secret);
+        assert_eq!(rows[3].label, "Savegame Slot");
+        assert_eq!(rows[3].value, "SAVEGAME  3");
+        assert_eq!(rows[4].label, "Crossplay allowed");
+        assert_eq!(rows[4].value, "Yes");
+    }
+
+    #[test]
+    fn readonly_anzeige_ohne_form_ist_fehler() {
+        use super::parse_settings_readonly;
+        assert!(parse_settings_readonly("<html></html>").is_err());
     }
 }

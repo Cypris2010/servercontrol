@@ -2,9 +2,10 @@
 //! Ort mit Logik; hier wird nur die Sitzung im App-State gehalten und für das Frontend
 //! serialisiert.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use servercontrol_core::{
-    ModStatus, OpCtx, ProfileId, ServerControl, ServerMod, ServerProfile, ServerState,
+    Difficulty, GameSettings, ModStatus, OpCtx, PauseIfEmpty, ProfileId, ServerControl, ServerMod,
+    ServerProfile, ServerState, SettingsOptions, SettingsRow,
 };
 use tokio::sync::Mutex;
 
@@ -293,6 +294,136 @@ async fn restart_server(state: tauri::State<'_, AppState>) -> Result<Overview, S
     build_overview(sc).await
 }
 
+// --- G6: Spieleinstellungen (Pflichtenheft 7.9) ---
+//
+// `GameSettings` trägt bewusst kein `Serialize` — das `Secret`-Feld soll sich nicht aus
+// Versehen irgendwo im Code (Log, Fehlermeldung, künftige Serialisierung) mitziehen lassen.
+// Hier an der einen Stelle, wo die GUI die Klartext-Passwörter zum Anzeigen/Bearbeiten
+// braucht (7.9: „Passwörter maskiert mit Anzeigen-Knopf"), werden sie **explizit** entpackt.
+
+#[derive(Serialize, Deserialize)]
+struct GameSettingsDto {
+    game_name: String,
+    admin_password: String,
+    game_password: String,
+    savegame: u8,
+    map_start: String,
+    initial_money: u32,
+    initial_loan: u32,
+    economic_difficulty: u8,
+    server_port: u16,
+    max_player: u8,
+    mp_language: String,
+    auto_save_interval: u32,
+    stats_interval: u32,
+    pause_game_if_empty: u8,
+    crossplay_allowed: bool,
+}
+
+impl From<GameSettings> for GameSettingsDto {
+    fn from(s: GameSettings) -> Self {
+        Self {
+            game_name: s.game_name,
+            admin_password: s.admin_password.expose().to_string(),
+            game_password: s.game_password.expose().to_string(),
+            savegame: s.savegame,
+            map_start: s.map_start,
+            initial_money: s.initial_money,
+            initial_loan: s.initial_loan,
+            economic_difficulty: s.economic_difficulty.into(),
+            server_port: s.server_port,
+            max_player: s.max_player,
+            mp_language: s.mp_language,
+            auto_save_interval: s.auto_save_interval,
+            stats_interval: s.stats_interval,
+            pause_game_if_empty: s.pause_game_if_empty.into(),
+            crossplay_allowed: s.crossplay_allowed,
+        }
+    }
+}
+
+impl TryFrom<GameSettingsDto> for GameSettings {
+    type Error = String;
+    fn try_from(d: GameSettingsDto) -> Result<Self, String> {
+        Ok(Self {
+            game_name: d.game_name,
+            admin_password: d.admin_password.into(),
+            game_password: d.game_password.into(),
+            savegame: d.savegame,
+            map_start: d.map_start,
+            initial_money: d.initial_money,
+            initial_loan: d.initial_loan,
+            economic_difficulty: Difficulty::try_from(d.economic_difficulty)?,
+            server_port: d.server_port,
+            max_player: d.max_player,
+            mp_language: d.mp_language,
+            auto_save_interval: d.auto_save_interval,
+            stats_interval: d.stats_interval,
+            pause_game_if_empty: PauseIfEmpty::try_from(d.pause_game_if_empty)?,
+            crossplay_allowed: d.crossplay_allowed,
+        })
+    }
+}
+
+/// Einstellungen + Dropdown-Optionen in einem Aufruf. Beide sind am laufenden Server nicht als
+/// Formular lesbar (das Panel zeigt online nur Text) — dann `settings`/`options` `None` und
+/// stattdessen `summary` (Label/Wert-Textanzeige, 7.9).
+#[derive(Serialize)]
+struct SettingsView {
+    online: bool,
+    settings: Option<GameSettingsDto>,
+    options: Option<SettingsOptions>,
+    summary: Option<Vec<SettingsRow>>,
+}
+
+#[tauri::command]
+async fn settings_view(state: tauri::State<'_, AppState>) -> Result<SettingsView, String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    let online = matches!(
+        sc.state().await.map_err(|e| e.to_string())?,
+        ServerState::Online { .. }
+    );
+    if online {
+        let summary = sc
+            .read_settings_summary()
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok(SettingsView {
+            online,
+            settings: None,
+            options: None,
+            summary: Some(summary),
+        });
+    }
+    let settings = sc.read_settings().await.map_err(|e| e.to_string())?.into();
+    let options = sc
+        .read_settings_options()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(SettingsView {
+        online,
+        settings: Some(settings),
+        options: Some(options),
+        summary: None,
+    })
+}
+
+/// Speichern — nur bei gestopptem Server möglich (sonst `Error::ServerRunning`, 7.2). Die
+/// Bibliothek fährt den vollen Formular-Umlauf und verifiziert das Ergebnis selbst (Q3).
+#[tauri::command]
+async fn save_settings(
+    state: tauri::State<'_, AppState>,
+    settings: GameSettingsDto,
+) -> Result<(), String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    let settings: GameSettings = settings.try_into()?;
+    sc.save_settings(&settings, &OpCtx)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -321,7 +452,9 @@ pub fn run() {
             delete_mod,
             start_server,
             stop_server,
-            restart_server
+            restart_server,
+            settings_view,
+            save_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

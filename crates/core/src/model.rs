@@ -63,8 +63,10 @@ pub struct GameSettings {
     pub crossplay_allowed: bool,
 }
 
-/// Wirtschaftliche Schwierigkeit (Server-Werte).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Wirtschaftliche Schwierigkeit (Server-Werte). Serialisiert als Zahl (1/2/3) — bequem für
+/// die GUI-Auswahlfelder (G6), die dieselben Server-Werte als `value` der Optionen nutzen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "u8", try_from = "u8")]
 pub enum Difficulty {
     Easy = 1,
     Normal = 2,
@@ -83,8 +85,27 @@ impl Difficulty {
     }
 }
 
-/// „Pause wenn leer" (Server-Werte).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+impl From<Difficulty> for u8 {
+    fn from(d: Difficulty) -> u8 {
+        d as u8
+    }
+}
+
+impl TryFrom<u8> for Difficulty {
+    type Error = String;
+    fn try_from(v: u8) -> std::result::Result<Self, String> {
+        match v {
+            1 => Ok(Self::Easy),
+            2 => Ok(Self::Normal),
+            3 => Ok(Self::Hard),
+            other => Err(format!("ungültige Schwierigkeit: {other}")),
+        }
+    }
+}
+
+/// „Pause wenn leer" (Server-Werte). Serialisiert als Zahl (1/2), analog [`Difficulty`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "u8", try_from = "u8")]
 pub enum PauseIfEmpty {
     No = 1,
     Instantly = 2,
@@ -97,6 +118,23 @@ impl PauseIfEmpty {
             "1" => Some(Self::No),
             "2" => Some(Self::Instantly),
             _ => None,
+        }
+    }
+}
+
+impl From<PauseIfEmpty> for u8 {
+    fn from(p: PauseIfEmpty) -> u8 {
+        p as u8
+    }
+}
+
+impl TryFrom<u8> for PauseIfEmpty {
+    type Error = String;
+    fn try_from(v: u8) -> std::result::Result<Self, String> {
+        match v {
+            1 => Ok(Self::No),
+            2 => Ok(Self::Instantly),
+            other => Err(format!("ungültiger Wert für Pause-wenn-leer: {other}")),
         }
     }
 }
@@ -123,6 +161,28 @@ pub struct SettingsOptions {
     pub max_player: Vec<FieldOption>,
     pub mp_language: Vec<FieldOption>,
     pub pause_game_if_empty: Vec<FieldOption>,
+}
+
+/// Eine Zeile der reinen Textanzeige der Einstellungen bei **laufendem** Server (Kap. 6.1): das
+/// Panel zeigt sie dort nur als Text, nicht als Formular — `label`/`value` wie im Panel, ohne
+/// die Wertebereichs-Codes aus [`GameSettings`]. `is_secret` markiert die beiden Passwort-Zeilen
+/// (Administrator-/Spiel-Passwort) für eine maskierte Anzeige mit Aufdecken-Knopf in der GUI.
+#[derive(Clone, Serialize)]
+pub struct SettingsRow {
+    pub label: String,
+    pub value: String,
+    pub is_secret: bool,
+}
+
+impl std::fmt::Debug for SettingsRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value: &str = if self.is_secret { "***" } else { &self.value };
+        f.debug_struct("SettingsRow")
+            .field("label", &self.label)
+            .field("value", &value)
+            .field("is_secret", &self.is_secret)
+            .finish()
+    }
 }
 
 /// Eine Log-Quelle des Servers: Typ (Game/Server/Webserver) mit seinen Logdateien (MZ5).

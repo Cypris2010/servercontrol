@@ -284,6 +284,12 @@ impl Session {
         crate::settings::parse_settings_options(&self.home().await?)
     }
 
+    /// Einstellungen als Textanzeige lesen (G6, nur bei **laufendem** Server — dort liefert das
+    /// Panel kein Formular, siehe [`Self::read_settings`]).
+    pub(crate) async fn read_settings_summary(&self) -> Result<Vec<crate::model::SettingsRow>> {
+        crate::settings::parse_settings_readonly(&self.home().await?)
+    }
+
     /// Spiel-Einstellungen speichern — **nur bei gestopptem Server** (Kap. 6). Voll-Formular-
     /// Umlauf: alle Felder aus `settings` senden + `save_settings`. Q4: fehlt das Formular/der
     /// Knopf → `FormMismatch`. Q3: danach zurücklesen und vergleichen — sonst `NotProven`.
@@ -443,7 +449,7 @@ impl Session {
 
     /// Authentifizierten GET der Home-Seite; erneuert die Sitzung **einmal transparent**, falls
     /// sie abgelaufen ist (Login-Formular zurück statt Home) — reaktiv, kein Pollen (Kap. 6).
-    async fn home(&self) -> Result<String> {
+    pub(crate) async fn home(&self) -> Result<String> {
         let body = self.get_text(self.base_url.clone()).await?;
         if !is_login_page(&body) {
             return Ok(body);
