@@ -42,7 +42,7 @@
       <nav class="sidebar">
         <button class="nav-item active" data-view="overview">Übersicht</button>
         <button class="nav-item" data-view="mods">Mods</button>
-        <button class="nav-item" data-view="deploy" disabled>Bereitstellen</button>
+        <button class="nav-item" data-view="deploy">Bereitstellen</button>
         <button class="nav-item" data-view="settings">Spieleinstellungen</button>
         <button class="nav-item" data-view="log" disabled>Log</button>
       </nav>
@@ -244,6 +244,87 @@
               <button type="submit" id="btn-settings-save" class="primary-btn">Speichern</button>
             </div>
           </form>
+        </section>
+
+        <!-- Bereitstellen (G3, Kap. 7.6) -->
+        <section id="deploy-view" class="view" hidden>
+          <div class="toolbar">
+            <h1>Bereitstellen</h1>
+          </div>
+
+          <div class="tabs" role="tablist">
+            <button type="button" id="tab-upload" class="tab-btn" role="tab" aria-selected="true">
+              Datei-Upload
+            </button>
+            <button type="button" id="tab-modhub" class="tab-btn" role="tab" aria-selected="false">
+              ModHub-Suche
+            </button>
+          </div>
+
+          <div id="deploy-panel-upload" class="tab-panel">
+            <p class="hint">
+              Mod-Datei hochladen (bis 1,71 GB über das Web-Formular; größere Dateien brauchen
+              FTP/SFTP, das ist in dieser Version noch nicht umgesetzt).
+            </p>
+
+            <div class="card2 upload-card">
+              <button type="button" id="btn-pick-file" class="ghost">Datei(en) auswählen…</button>
+              <button type="button" id="btn-pick-folder" class="ghost">Ordner auswählen…</button>
+              <div id="upload-file-name" class="hint-inline">keine Datei gewählt</div>
+            </div>
+
+            <div id="upload-plan-controls" class="upload-plan-controls" hidden>
+              <button type="button" id="btn-bulk-go" class="ghost small">
+                Alle: Hochladen/Überschreiben
+              </button>
+              <button type="button" id="btn-bulk-skip" class="ghost small">
+                Alle: Nicht hochladen
+              </button>
+              <button type="button" id="btn-bulk-newer" class="ghost small">Nur neuere Versionen</button>
+              <div class="grow"></div>
+              <button type="button" id="btn-start-upload" class="primary-btn">Start</button>
+            </div>
+
+            <div id="upload-queue" class="upload-queue"></div>
+            <p id="upload-error" class="error" hidden></p>
+          </div>
+
+          <div id="deploy-panel-modhub" class="tab-panel" hidden>
+            <p class="hint">
+              Mods aus dem offiziellen ModHub direkt auf den Server laden. Installieren geht nur
+              bei <b>gestopptem</b> Server.
+            </p>
+
+            <div class="card2 modhub-search-card">
+              <input type="text" id="modhub-query" class="inp" placeholder="Mod-Name suchen…" />
+              <button type="button" id="btn-modhub-search" class="ghost">Suchen</button>
+            </div>
+
+            <div class="card2 modhub-search-card">
+              <select id="modhub-category" class="inp">
+                <option value="3">Update</option>
+                <option value="1">Alle</option>
+                <option value="0">DLC</option>
+                <option value="5">Neueste</option>
+                <option value="6">Beste</option>
+                <option value="7">Meistheruntergeladen</option>
+                <option value="8">Paket</option>
+                <option value="9">Offizielle Mods</option>
+                <option value="10">Karte (Europa)</option>
+                <option value="11">Karte (Nordamerika)</option>
+                <option value="12">Karte (Südamerika)</option>
+                <option value="13">Karte (sonstige)</option>
+                <option value="14">Gameplay</option>
+              </select>
+              <button type="button" id="btn-modhub-browse" class="ghost">
+                Kategorie anzeigen
+              </button>
+              <div class="hint-inline">nur bei gestopptem Server</div>
+            </div>
+
+            <p id="modhub-error" class="error" hidden></p>
+            <div id="modhub-results" class="modhub-results"></div>
+          </div>
         </section>
       </main>
     </div>

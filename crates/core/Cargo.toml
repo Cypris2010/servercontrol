@@ -16,6 +16,7 @@ reqwest = { version = "0.12", default-features = false, features = [
     "cookies",
     "rustls-tls",
     "multipart",
+    "stream",
 ] }
 # HTML auswerten (Login-Formular erkennen, status-indicator, Mod-Listen).
 scraper = "0.20"
@@ -34,6 +35,13 @@ base64 = "0.22"
 directories = "5"
 # Stabile Profil-ID als Credential-Store-Schlüssel (Kap. 8.4), unabhängig von Adresse/Nutzer.
 uuid = { version = "1", features = ["v4", "serde"] }
+# Upload als Datei-Strom statt komplett im Speicher — dabei den Fortschritt mitzählen (Kap. 7.3
+# `progress`-Events, G3).
+tokio-util = { version = "0.7", features = ["io"] }
+futures-util = { version = "0.3", default-features = false }
+# Eigene Version aus modDesc.xml im Zip lesen, vor dem Hochladen — Abgleich mit der Server-
+# Version (G3, Ueberschreiben-Entscheidung).
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 # Nur für das Livetest-Beispiel (examples/login.rs): async-Laufzeit.

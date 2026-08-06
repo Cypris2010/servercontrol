@@ -20,3 +20,13 @@ Thumbs.db
 # Zugangsdaten gehören NIEMALS ins Repo (Q1) — nur in den OS-Credential-Store.
 *.secret
 credentials.*
+
+# Lokale FTP/SFTP-Testinfrastruktur (tools/test-ftp-sftp) — Uploads und generierte Testkeys.
+tools/test-ftp-sftp/data/mods/*
+!tools/test-ftp-sftp/data/mods/.gitkeep
+tools/test-ftp-sftp/keys/*
+!tools/test-ftp-sftp/keys/.gitkeep
+
+# Zugangs-Keypair zum echten Produktivserver (Hetzner) — privater Key darf nie ins Repo.
+tools/test-ftp-sftp/prod-keys/id_prod_sftp
+tools/test-ftp-sftp/prod-keys/id_prod_sftp.pub

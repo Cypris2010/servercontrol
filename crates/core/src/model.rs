@@ -33,6 +33,11 @@ pub struct ServerMod {
     pub size: Option<u64>,
     pub is_dlc: bool,
     pub status: ModStatus,
+    /// Zeigt das Panel neben der Version das `updateIcon.png` („An update is available for
+    /// this mod.")? Live geprüft: das Icon steht in derselben Versionsspalte, die wir ohnehin
+    /// parsen — verlinkt lediglich auf die ModHub-Kategorie „Update" (`category=3`), nicht auf
+    /// eine konkrete `mod_id` (die holt sich die GUI bei Bedarf über die Kategorieseite, Kap. 10.1).
+    pub update_available: bool,
 }
 
 /// Spiel-Einstellungen = Felder des `configuration`-Formulars (Kap. 6.1),
@@ -224,4 +229,40 @@ pub struct OpCtx;
 pub struct Progress {
     pub done: u64,
     pub total: Option<u64>,
+}
+
+/// Ein Treffer der ModHub-Namenssuche (Weg B, Kap. 4.4 / 10.2 LH) — genug, um eine Trefferkarte
+/// zu zeigen und „Auf Server installieren" auszulösen (`mod_id` = `startmoddownload`-Kennung).
+#[derive(Debug, Clone, Serialize)]
+pub struct CatalogEntry {
+    pub mod_id: u64,
+    pub name: String,
+    pub author: Option<String>,
+    pub rating: Option<f32>,
+    pub thumb_url: Option<String>,
+}
+
+/// Ein Eintrag der **serverseitigen** ModHub-Kategorieseite (Pflichtenheft 10.1) — der Server
+/// selbst kennt Version/Autor/Dateiname/Größe, aber keine Bewertung/kein Vorschaubild (die
+/// liefert nur die öffentliche Website, [`CatalogEntry`]). Nur bei gestopptem Server lesbar
+/// (Kap. 7.7 LH). `mod_id` ist dieselbe Kennung wie bei [`CatalogEntry`] (`startmoddownload`).
+#[derive(Debug, Clone, Serialize)]
+pub struct ModhubCategoryEntry {
+    pub mod_id: u64,
+    pub name: String,
+    pub version: Option<String>,
+    pub author: Option<String>,
+    pub file_name: String,
+    pub size: Option<u64>,
+}
+
+/// Detailinfos eines ModHub-Eintrags (Kap. 4.4 / 10.2 LH) — für eine optionale Detailansicht.
+#[derive(Debug, Clone, Serialize)]
+pub struct CatalogDetails {
+    pub mod_id: u64,
+    pub name: String,
+    pub author: Option<String>,
+    pub version: Option<String>,
+    pub file_name: Option<String>,
+    pub description: Option<String>,
 }

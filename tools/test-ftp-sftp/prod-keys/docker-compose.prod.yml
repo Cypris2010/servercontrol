@@ -1,0 +1,32 @@
+services:
+  ftp-sftp-sftp:
+    image: atmoz/sftp:latest
+    container_name: ftp-sftp-sftp
+    # Leeres Passwortfeld -> Passwort-Login deaktiviert, nur Public-Key-Auth (keys/*.pub).
+    command: testuser::1000:1000
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /opt/fs25/config/FarmingSimulator2025:/home/testuser/farmingsimulator2025
+      - /opt/fs25/compose/ftp-sftp/keys:/home/testuser/.ssh/keys:ro
+    ports:
+      - 2222:22
+    restart: unless-stopped
+
+  ftp-sftp-ftp:
+    image: delfer/alpine-ftp-server:latest
+    container_name: ftp-sftp-ftp
+    env_file:
+      - .env
+    environment:
+      # Format: name|password|folder|uid|gid (siehe /bin/start_vsftpd.sh im Image)
+      - USERS=testuser|${FTP_PASS}|/ftp/testuser|1000|1000
+      - ADDRESS=178.105.224.182
+      - MIN_PORT=21100
+      - MAX_PORT=21110
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /opt/fs25/config/FarmingSimulator2025:/ftp/testuser
+    ports:
+      - 2121:21
+      - 21100-21110:21100-21110
+    restart: unless-stopped

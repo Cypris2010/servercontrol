@@ -23,6 +23,9 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
+# Nativer Dateiauswahl-Dialog fuer den Mod-Upload (G3) - liefert einen echten Dateisystempfad,
+# den `upload_mod` dann selbst einliest (kein Binaerdaten-Umweg ueber die IPC-Bruecke).
+tauri-plugin-dialog = "2"
 
 # Die Kernbibliothek — der einzige Ort mit Logik. Die Commands sind dünne Wrapper.
 servercontrol-core = { path = "../crates/core" }

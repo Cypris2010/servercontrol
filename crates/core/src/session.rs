@@ -13,11 +13,19 @@
 //! dem Cookie nach jeder Antwort, damit die Sitzung in **beiden** Fällen robust weiterläuft.
 //! Ein `User-Agent` wird gesetzt (reqwest sendet per Default keinen); für die Sitzung ist er
 //! nicht erforderlich (verifiziert), aber er kennzeichnet den Client sauber.
+//!
+//! **Seit Patch 21 (verifiziert): der Login-POST antwortet mit `303 See Other`** (Post/
+//! Redirect/Get) statt direkt mit der Seite. reqwest folgt Redirects standardmäßig selbst,
+//! entfernt dabei aber unseren manuell gesetzten `Cookie`-Header (Schutz gegen Cookie-Leaks
+//! bei Redirects) — die automatisch gefolgte Anfrage geht dann unauthentifiziert raus und
+//! landet wieder auf der Login-Seite (`AuthFailed` trotz korrekter Zugangsdaten). Deshalb
+//! `redirect::Policy::none()` und Redirects selbst mit unserem Cookie verfolgen (`send_raw`).
 
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use futures_util::StreamExt;
 use reqwest::header::COOKIE;
 use reqwest::{Client, RequestBuilder, Response};
 use scraper::{Html, Selector};
@@ -30,6 +38,10 @@ use crate::Result;
 
 /// Name des Sitzungs-Cookies im FS-Panel.
 const SESSION_COOKIE: &str = "SessionID";
+
+/// Obergrenze für selbst verfolgte Redirects (Post/Redirect/Get u. ä.) — schützt vor
+/// Redirect-Schleifen, weit über dem, was das Panel je verkettet.
+const MAX_REDIRECTS: u8 = 10;
 
 /// Poll-Intervall beim Warten auf einen Zustandswechsel (start/stop/restart).
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
@@ -45,6 +57,12 @@ const LONGPOLL_TIMEOUT: Duration = Duration::from_secs(45);
 /// Web-Upload-Grenze des Panels („Maximal allowed upload size is 1.71 GB"). Konservativ als
 /// dezimale GB angesetzt; größere Dateien brauchen FTP/SFTP (`NoFileAccess`, MZ4).
 const MAX_WEB_UPLOAD: u64 = 1_710_000_000;
+
+/// Poll-Intervall für den ModHub-Downloadfortschritt — wie das Panel selbst (`frontend.js`,
+/// Kap. 7.7 LH: 1-Sekunden-Takt).
+const MODHUB_POLL_INTERVAL: Duration = Duration::from_secs(1);
+/// Zeitgrenze für einen ModHub-Download — großzügig für große Mods/Maps über langsame Leitungen.
+const MODHUB_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(1800);
 
 /// Authentifizierte HTTP-Sitzung gegen ein FS25-Web-Panel.
 ///
@@ -82,6 +100,9 @@ impl Session {
             // eine wiederverwendete Pool-Verbindung ist dann tot und der nächste Request stirbt
             // mit „error sending request". Jede Anfrage frisch (wie curl) — verifiziert.
             .pool_max_idle_per_host(0)
+            // Redirects selbst verfolgen (siehe Modulkopf, Patch-21-Kommentar): reqwests
+            // eingebaute Redirect-Behandlung entfernt unseren manuellen `Cookie`-Header.
+            .redirect(reqwest::redirect::Policy::none())
             .danger_accept_invalid_certs(accept_invalid_cert)
             .build()
             .map_err(|e| Error::Network(e.to_string()))?;
@@ -180,26 +201,56 @@ impl Session {
     /// Einen Mod über das Web-Panel hochladen (`modUpload`, multipart). Bis 1,71 GB; darüber
     /// `NoFileAccess` (dann FTP/SFTP nötig, MZ4). Q3: danach muss der Mod in der Liste stehen.
     pub(crate) async fn upload_mod(&self, path: &Path) -> Result<()> {
+        self.upload_mod_with_progress(path, |_| {}).await
+    }
+
+    /// Wie [`Self::upload_mod`], meldet aber laufend den Fortschritt (Kap. 7.3, `progress`-
+    /// Events) — die Datei wird gestreamt statt komplett in den Speicher gelesen, damit auch
+    /// Dateien nahe der 1,71-GB-Grenze den Prozess nicht aufblähen.
+    pub(crate) async fn upload_mod_with_progress<F>(&self, path: &Path, on_progress: F) -> Result<()>
+    where
+        F: Fn(crate::model::Progress) + Send + Sync + 'static,
+    {
         let file_name = path
             .file_name()
             .and_then(|n| n.to_str())
             .ok_or_else(|| Error::Parse("ungültiger Dateiname".to_string()))?
             .to_string();
-        let bytes = tokio::fs::read(path)
+        let file = tokio::fs::File::open(path)
             .await
             .map_err(|e| Error::Parse(format!("Datei nicht lesbar: {e}")))?;
-        if bytes.len() as u64 > MAX_WEB_UPLOAD {
+        let total = file
+            .metadata()
+            .await
+            .map_err(|e| Error::Parse(format!("Datei nicht lesbar: {e}")))?
+            .len();
+        if total > MAX_WEB_UPLOAD {
             return Err(Error::NoFileAccess);
         }
 
-        let url = self.mods_page_url()?;
-        let part = reqwest::multipart::Part::bytes(bytes)
-            .file_name(file_name.clone())
-            .mime_str("application/zip")
-            .map_err(map_reqwest)?;
+        let sent = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let stream = tokio_util::io::ReaderStream::new(file).inspect(move |chunk| {
+            if let Ok(bytes) = chunk {
+                let now = sent.fetch_add(bytes.len() as u64, std::sync::atomic::Ordering::Relaxed)
+                    + bytes.len() as u64;
+                on_progress(crate::model::Progress {
+                    done: now,
+                    total: Some(total),
+                });
+            }
+        });
+        let part = reqwest::multipart::Part::stream_with_length(
+            reqwest::Body::wrap_stream(stream),
+            total,
+        )
+        .file_name(file_name.clone())
+        .mime_str("application/zip")
+        .map_err(map_reqwest)?;
         let form = reqwest::multipart::Form::new()
             .part("file", part)
             .text("file_upload", "Upload");
+
+        let url = self.mods_page_url()?;
         self.send(self.client.post(url).multipart(form)).await?;
 
         let present = self
@@ -212,6 +263,124 @@ impl Session {
         } else {
             Err(Error::NotProven)
         }
+    }
+
+    /// ModHub-Download **durch den Server** auslösen: `startmoddownload=<mod_id>` auf einer
+    /// Kategorieseite (Kategorie „All" = 1 reicht für jede numerische ID — die Seite dient nur
+    /// als Formularziel, nicht als Filter). **Nur bei gestopptem Server** (Kap. 7.7 LH: ohne
+    /// Login *oder* bei laufendem Server liefert `?category=` die installierten Mods statt des
+    /// ModHub-Katalogs — keine `startmoddownload`-Buttons).
+    pub(crate) async fn modhub_start(&self, mod_id: u64) -> Result<()> {
+        if matches!(self.state().await?, ServerState::Online { .. }) {
+            return Err(Error::ServerRunning);
+        }
+        let url = self
+            .base_url
+            .join("mods.html?category=1&lang=en")
+            .map_err(|e| Error::Parse(e.to_string()))?;
+        self.send(
+            self.client
+                .post(url)
+                .form(&[("startmoddownload", mod_id.to_string())]),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Fortschritt eines laufenden ModHub-Downloads: `GET
+    /// mods.html?modhubdownloadprogress=<mod_id>` → JSON `{downloaded, total}` (Kap. 7.7 LH).
+    pub(crate) async fn modhub_progress(&self, mod_id: u64) -> Result<crate::model::Progress> {
+        let url = self
+            .base_url
+            .join(&format!("mods.html?modhubdownloadprogress={mod_id}"))
+            .map_err(|e| Error::Parse(e.to_string()))?;
+        let text = self.get_text(url).await?;
+        #[derive(serde::Deserialize)]
+        struct Raw {
+            downloaded: u64,
+            total: u64,
+        }
+        let raw: Raw = serde_json::from_str(&text)
+            .map_err(|e| Error::Parse(format!("modhubdownloadprogress: {e}")))?;
+        Ok(crate::model::Progress {
+            done: raw.downloaded,
+            total: Some(raw.total),
+        })
+    }
+
+    /// Laufenden ModHub-Download abbrechen (`cancelmoddownload=<mod_id>`).
+    pub(crate) async fn modhub_cancel(&self, mod_id: u64) -> Result<()> {
+        let url = self
+            .base_url
+            .join("mods.html?category=1&lang=en")
+            .map_err(|e| Error::Parse(e.to_string()))?;
+        self.send(
+            self.client
+                .post(url)
+                .form(&[("cancelmoddownload", mod_id.to_string())]),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Bequemlichkeit: startet einen ModHub-Download, pollt bis `downloaded >= total` und
+    /// **verifiziert** danach (Q3), dass `expected_file_name` in der Mod-Liste steht — sonst
+    /// `NotProven`. `expected_file_name` liefert die GUI aus [`crate::modhub::catalog::details`]
+    /// (ohnehin für die Anzeige geholt).
+    pub(crate) async fn modhub_download<F>(
+        &self,
+        mod_id: u64,
+        expected_file_name: &str,
+        on_progress: F,
+    ) -> Result<()>
+    where
+        F: Fn(crate::model::Progress) + Send + Sync,
+    {
+        self.modhub_start(mod_id).await?;
+        let deadline = Instant::now() + MODHUB_DOWNLOAD_TIMEOUT;
+        loop {
+            let p = self.modhub_progress(mod_id).await?;
+            on_progress(p);
+            if let Some(total) = p.total {
+                if total > 0 && p.done >= total {
+                    break;
+                }
+            }
+            if Instant::now() >= deadline {
+                return Err(Error::NotProven);
+            }
+            tokio::time::sleep(MODHUB_POLL_INTERVAL).await;
+        }
+
+        let present = self
+            .list_mods()
+            .await?
+            .iter()
+            .any(|m| m.file_name == expected_file_name);
+        if present {
+            Ok(())
+        } else {
+            Err(Error::NotProven)
+        }
+    }
+
+    /// Serverseitige ModHub-Kategorieseite lesen (`mods.html?category=<id>&page=<p>&lang=en`,
+    /// Kap. 10.1 LH) — **nur bei gestopptem Server** (sonst zeigt `?category=` die installierten
+    /// Mods statt des ModHub-Katalogs, Kap. 7.7 LH).
+    pub(crate) async fn modhub_category(
+        &self,
+        category: u8,
+        page: u32,
+    ) -> Result<Vec<crate::model::ModhubCategoryEntry>> {
+        if matches!(self.state().await?, ServerState::Online { .. }) {
+            return Err(Error::ServerRunning);
+        }
+        let url = self
+            .base_url
+            .join(&format!("mods.html?category={category}&page={page}&lang=en"))
+            .map_err(|e| Error::Parse(e.to_string()))?;
+        let html = self.get_text(url).await?;
+        crate::modhub::parse_category(&html)
     }
 
     /// Verfügbare Logs (Typen + Dateien) und die aktuelle `epoch` lesen (MZ5, Kap. 7.4 LH).
@@ -489,8 +658,23 @@ impl Session {
     }
 
     /// Wie [`Self::send`], aber mit dem **rohen** reqwest-Fehler — damit der Long-Poll ein
-    /// Timeout von echter Unerreichbarkeit unterscheiden kann.
+    /// Timeout von echter Unerreichbarkeit unterscheiden kann. Folgt Redirects (Post/
+    /// Redirect/Get seit Patch 21) selbst mit dem aktuellen Cookie, da reqwests eigene
+    /// Redirect-Behandlung deaktiviert ist (siehe Modulkopf).
     async fn send_raw(&self, req: RequestBuilder) -> reqwest::Result<Response> {
+        let mut resp = self.send_once(req).await?;
+        for _ in 0..MAX_REDIRECTS {
+            let Some(location) = redirect_location(&resp) else {
+                break;
+            };
+            resp = self.send_once(self.client.get(location)).await?;
+        }
+        Ok(resp)
+    }
+
+    /// Eine Anfrage mit aktueller SessionID abschicken (ohne Redirects zu folgen) und danach
+    /// ein ggf. geändertes Cookie aus `Set-Cookie` übernehmen.
+    async fn send_once(&self, req: RequestBuilder) -> reqwest::Result<Response> {
         let sid = self.session_id.lock().unwrap().clone();
         let req = if sid.is_empty() {
             req
@@ -563,6 +747,17 @@ fn parse_game_version(html: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Ziel-URL eines Redirects (3xx + `Location`), absolut aufgelöst gegen die angefragte URL —
+/// `None`, wenn die Antwort keiner ist (Regelfall, da reqwests eigene Redirect-Behandlung
+/// deaktiviert ist).
+fn redirect_location(resp: &Response) -> Option<Url> {
+    if !resp.status().is_redirection() {
+        return None;
+    }
+    let location = resp.headers().get(reqwest::header::LOCATION)?.to_str().ok()?;
+    resp.url().join(location).ok()
 }
 
 /// SessionID-Cookie aus einer Antwort lesen.

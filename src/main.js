@@ -1,6 +1,7 @@
 // Frontend ↔ Bibliothek: alle echten Operationen laufen über Tauri-Commands (src-tauri),
 // die dünn auf servercontrol-core sitzen. Hier nur UI-Zustand und Aufrufe.
 const { invoke } = window.__TAURI__.core;
+const { listen } = window.__TAURI__.event;
 
 const $ = (id) => document.getElementById(id);
 
@@ -127,7 +128,7 @@ function renderMods() {
         <td class="c-sel"><input type="checkbox" class="rowchk" ${checked} ${locked ? "disabled" : ""} aria-label="${name} auswählen" /></td>
         <td><span class="badge badge-${STATUS_CLASS[m.status]}">${STATUS_LABEL[m.status]}</span></td>
         <td>${name}</td>
-        <td class="c-ver">${m.version || "—"}</td>
+        <td class="c-ver">${m.version || "—"}${m.update_available ? ' <span class="update-badge" title="Update im ModHub verfügbar">↑</span>' : ""}</td>
         <td>${author}</td>
         <td class="c-file">${m.file_name}</td>
         <td class="c-size">${fmtSize(m.size)}</td>
@@ -404,6 +405,434 @@ function initSettingsView() {
   });
 }
 
+// --- Bereitstellen (G3, Pflichtenheft 7.6) — vorerst nur Datei-Upload ---
+// Ablauf: Datei(en)/Ordner wählen → Prüfschritt (plan_uploads, kein Upload) → pro Datei eine
+// Entscheidung (Hochladen/Überschreiben/Nicht hochladen) → Start läuft die nicht übersprungenen
+// nacheinander (ein Fortschritts-Event-Kanal), mit eigenem Balken je Zeile.
+let uploadPlan = []; // { path, file_name, is_fs25_mod, local_version, exists_on_server, server_version, server_status, decision }
+let uploadRunning = false; // true ab Klick auf „Start" — steuert, ob „×" aus dem Plan nimmt oder nur die Zeile ausblendet
+
+function basename(p) {
+  return p.split(/[\\/]/).pop();
+}
+
+function fmtBytes(n) {
+  const mb = n / (1024 * 1024);
+  return mb >= 1000 ? (mb / 1024).toFixed(2) + " GB" : mb.toFixed(1) + " MB";
+}
+
+function defaultDecision(item) {
+  if (!item.is_fs25_mod) return "skip";
+  return item.exists_on_server ? "skip" : "upload";
+}
+
+async function buildUploadPlan(paths) {
+  const err = $("upload-error");
+  err.hidden = true;
+  uploadRunning = false;
+  $("upload-file-name").textContent = `Prüfe ${paths.length === 1 ? "1 Datei" : paths.length + " Dateien"}…`;
+  try {
+    const items = await invoke("plan_uploads", { paths });
+    uploadPlan = items.map((it) => ({ ...it, decision: defaultDecision(it) }));
+    $("upload-file-name").textContent =
+      paths.length === 1 ? basename(paths[0]) : `${paths.length} Dateien: ${paths.map(basename).join(", ")}`;
+    renderUploadPlan();
+  } catch (e) {
+    err.textContent = "Prüfen fehlgeschlagen: " + e;
+    err.hidden = false;
+  }
+}
+
+async function pickModFile() {
+  const err = $("upload-error");
+  err.hidden = true;
+  try {
+    const path = await invoke("plugin:dialog|open", {
+      options: {
+        multiple: true,
+        filters: [{ name: "Mod", extensions: ["zip", "dlc"] }],
+      },
+    });
+    if (!path) return;
+    await buildUploadPlan(Array.isArray(path) ? path : [path]);
+  } catch (e) {
+    err.textContent = "Dateiauswahl fehlgeschlagen: " + e;
+    err.hidden = false;
+  }
+}
+
+async function pickModFolder() {
+  const err = $("upload-error");
+  err.hidden = true;
+  try {
+    const dir = await invoke("plugin:dialog|open", {
+      options: { directory: true, multiple: false },
+    });
+    if (!dir) return;
+    const dirPath = Array.isArray(dir) ? dir[0] : dir;
+    $("upload-file-name").textContent = "Durchsuche Ordner…";
+    const paths = await invoke("list_mod_files", { dir: dirPath });
+    if (paths.length === 0) {
+      $("upload-file-name").textContent = "keine Datei gewählt";
+      err.textContent = "Keine FS25-Mods (.zip/.dlc mit modDesc.xml) in diesem Ordner gefunden.";
+      err.hidden = false;
+      return;
+    }
+    await buildUploadPlan(paths);
+  } catch (e) {
+    err.textContent = "Ordnerauswahl fehlgeschlagen: " + e;
+    err.hidden = false;
+  }
+}
+
+function decisionOptionsHtml(item) {
+  const overwriteDisabled = lastOnline ? "disabled" : "";
+  if (item.exists_on_server) {
+    return `<option value="skip">Nicht hochladen</option>
+      <option value="overwrite" ${overwriteDisabled}>Überschreiben</option>`;
+  }
+  return `<option value="upload">Hochladen</option>
+    <option value="skip">Nicht hochladen</option>`;
+}
+
+function renderUploadPlan() {
+  $("upload-plan-controls").hidden = uploadPlan.length === 0;
+  $("upload-queue").innerHTML = uploadPlan
+    .map((item, i) => {
+      const badge = !item.is_fs25_mod
+        ? '<span class="badge badge-orphan">Kein FS25-Mod</span>'
+        : item.exists_on_server
+          ? '<span class="badge badge-inactive">Vorhanden</span>'
+          : '<span class="badge badge-active">Neu</span>';
+      let versions;
+      if (!item.is_fs25_mod) {
+        versions = "Keine <code>modDesc.xml</code> gefunden — vermutlich kein FS25-Mod.";
+      } else if (item.exists_on_server) {
+        versions = `Eigene Version: <b>${escapeHtml(item.local_version || "unbekannt")}</b> ·
+           Server-Version: <b>${escapeHtml(item.server_version || "unbekannt")}</b>
+           (${STATUS_LABEL[item.server_status] || item.server_status})`;
+      } else {
+        versions = `Version: <b>${escapeHtml(item.local_version || "unbekannt")}</b>`;
+      }
+      return `<div class="upload-row" id="upload-row-${i}">
+        <button type="button" class="upload-row-close" data-idx="${i}" title="Entfernen">×</button>
+        <div class="upload-row-head">
+          <span class="upload-row-name">${escapeHtml(item.file_name)}</span>
+          ${badge}
+        </div>
+        <div class="upload-row-versions">${versions}</div>
+        <div class="upload-row-decision" id="upload-row-decision-${i}">
+          <select class="inp" data-idx="${i}">${decisionOptionsHtml(item)}</select>
+        </div>
+        <div class="progress-wrap" id="upload-row-fill-wrap-${i}" hidden>
+          <div class="progress-fill" id="upload-row-fill-${i}"></div>
+        </div>
+        <div class="upload-row-status" id="upload-row-status-${i}"></div>
+      </div>`;
+    })
+    .join("");
+  uploadPlan.forEach((item, i) => {
+    $(`upload-row-${i}`).querySelector("select").value = item.decision;
+  });
+}
+
+function setAllDecisions(decision) {
+  uploadPlan.forEach((item) => {
+    if (decision === "skip" || !item.is_fs25_mod) {
+      item.decision = "skip";
+    } else if (item.exists_on_server) {
+      item.decision = lastOnline ? "skip" : "overwrite";
+    } else {
+      item.decision = "upload";
+    }
+  });
+  renderUploadPlan();
+}
+
+// Vergleicht zwei punktgetrennte Versionsnummern (z. B. "1.0.0.1") Segment für Segment
+// numerisch. > 0 wenn a neuer, < 0 wenn a älter, 0 wenn gleich, null wenn nicht vergleichbar.
+function compareVersions(a, b) {
+  const pa = String(a).split(".").map((n) => parseInt(n, 10));
+  const pb = String(b).split(".").map((n) => parseInt(n, 10));
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const na = pa[i] || 0;
+    const nb = pb[i] || 0;
+    if (Number.isNaN(na) || Number.isNaN(nb)) return null;
+    if (na !== nb) return na - nb;
+  }
+  return 0;
+}
+
+// Nur bereits vorhandene Mods mit einer eigenen Version, die höher ist als die auf dem Server,
+// auf „Überschreiben" stellen — alle anderen vorhandenen auf „Nicht hochladen". Neue Mods
+// (noch nicht auf dem Server) bleiben unverändert.
+function setNewerOnly() {
+  uploadPlan.forEach((item) => {
+    if (!item.is_fs25_mod || !item.exists_on_server) return;
+    if (lastOnline) {
+      item.decision = "skip";
+      return;
+    }
+    const cmp =
+      item.local_version && item.server_version
+        ? compareVersions(item.local_version, item.server_version)
+        : null;
+    item.decision = cmp !== null && cmp > 0 ? "overwrite" : "skip";
+  });
+  renderUploadPlan();
+}
+
+function removeUploadRow(idx) {
+  if (uploadRunning) {
+    $(`upload-row-${idx}`)?.remove();
+    return;
+  }
+  uploadPlan.splice(idx, 1);
+  renderUploadPlan();
+}
+
+async function startUploadPlan() {
+  const toRun = uploadPlan.filter((it) => it.decision !== "skip");
+  const err = $("upload-error");
+  err.hidden = true;
+  if (toRun.some((it) => it.decision === "overwrite")) {
+    const ok = await confirmDialog(
+      "Mods überschreiben?",
+      "Die ausgewählten, bereits vorhandenen Mod-Dateien werden vor dem Neu-Hochladen vom Server gelöscht — das lässt sich nicht rückgängig machen.",
+      "Überschreiben",
+      true,
+    );
+    if (!ok) return;
+  }
+
+  uploadRunning = true;
+  $("upload-plan-controls").hidden = true;
+  const failedNames = [];
+
+  for (let i = 0; i < uploadPlan.length; i++) {
+    const item = uploadPlan[i];
+    const row = $(`upload-row-${i}`);
+    if (!row) continue; // per „×" vor dem Start entfernt
+    $(`upload-row-decision-${i}`).hidden = true;
+    const fillWrap = $(`upload-row-fill-wrap-${i}`);
+    const fill = $(`upload-row-fill-${i}`);
+    const statusEl = $(`upload-row-status-${i}`);
+
+    if (item.decision === "skip") {
+      statusEl.textContent = "übersprungen";
+      continue;
+    }
+    fillWrap.hidden = false;
+    statusEl.textContent = item.decision === "overwrite" ? "löscht vorhandene Version…" : "lädt hoch…";
+
+    const unlisten = await listen("progress", (event) => {
+      const { done, total } = event.payload;
+      statusEl.textContent = total
+        ? `${fmtBytes(done)} von ${fmtBytes(total)} (${Math.round((done / total) * 100)} %)`
+        : `${fmtBytes(done)} hochgeladen…`;
+      if (total) fill.style.width = `${Math.min(100, (done / total) * 100)}%`;
+    });
+    try {
+      if (item.decision === "overwrite") {
+        await invoke("overwrite_mod", { path: item.path, fileName: item.file_name });
+      } else {
+        await invoke("upload_mod", { path: item.path });
+      }
+      fill.style.width = "100%";
+      statusEl.textContent = "fertig";
+      statusEl.classList.add("done");
+    } catch (e) {
+      fill.classList.add("failed");
+      statusEl.textContent = "fehlgeschlagen: " + e;
+      statusEl.classList.add("failed");
+      failedNames.push(item.file_name);
+    } finally {
+      unlisten();
+    }
+  }
+
+  uploadPlan = [];
+  $("upload-file-name").textContent = "keine Datei gewählt";
+  if (failedNames.length > 0) {
+    err.textContent = "Fehlgeschlagen: " + failedNames.join(", ");
+    err.hidden = false;
+  }
+}
+
+function initDeployView() {
+  $("btn-pick-file").addEventListener("click", pickModFile);
+  $("btn-pick-folder").addEventListener("click", pickModFolder);
+  $("btn-bulk-go").addEventListener("click", () => setAllDecisions("go"));
+  $("btn-bulk-skip").addEventListener("click", () => setAllDecisions("skip"));
+  $("btn-bulk-newer").addEventListener("click", setNewerOnly);
+  $("btn-start-upload").addEventListener("click", startUploadPlan);
+  $("upload-queue").addEventListener("change", (e) => {
+    const select = e.target.closest("select[data-idx]");
+    if (!select) return;
+    uploadPlan[Number(select.dataset.idx)].decision = select.value;
+  });
+  $("upload-queue").addEventListener("click", (e) => {
+    const btn = e.target.closest(".upload-row-close");
+    if (!btn) return;
+    removeUploadRow(Number(btn.dataset.idx));
+  });
+
+  $("tab-upload").addEventListener("click", () => showDeployTab("upload"));
+  $("tab-modhub").addEventListener("click", () => showDeployTab("modhub"));
+  showDeployTab("upload");
+
+  $("btn-modhub-search").addEventListener("click", runModhubSearch);
+  $("modhub-query").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") runModhubSearch();
+  });
+  $("btn-modhub-browse").addEventListener("click", runModhubBrowse);
+  $("modhub-results").addEventListener("click", (e) => {
+    const btn = e.target.closest(".modhub-install-btn");
+    if (!btn) return;
+    const modId = Number(btn.dataset.modId);
+    installModhubMod(modId, modhubFileNames[modId]);
+  });
+}
+
+// --- ModHub-Suche (G3b, Kann-Ziel, Pflichtenheft 4.4 / 7.7 LH) ---
+
+function showDeployTab(tab) {
+  $("tab-upload").classList.toggle("active", tab === "upload");
+  $("tab-upload").setAttribute("aria-selected", tab === "upload");
+  $("tab-modhub").classList.toggle("active", tab === "modhub");
+  $("tab-modhub").setAttribute("aria-selected", tab === "modhub");
+  $("deploy-panel-upload").hidden = tab !== "upload";
+  $("deploy-panel-modhub").hidden = tab !== "modhub";
+}
+
+// mod_id -> Dateiname, wenn schon bekannt (aus der Server-Kategorieseite) — dann kann
+// `modhub_install` sich den zusätzlichen Abruf der öffentlichen ModHub-Detailseite sparen.
+let modhubFileNames = {};
+
+function modhubResultHtml(entry, installedVersion) {
+  const stars = entry.rating != null ? `★ ${entry.rating.toFixed(1)}` : "";
+  const versionText =
+    installedVersion !== undefined
+      ? `Installiert: ${installedVersion || "unbekannt"} → Neu: ${entry.version || "unbekannt"}`
+      : entry.version
+        ? "v" + entry.version
+        : "";
+  const meta = [entry.author, stars, versionText, entry.size ? fmtBytes(entry.size) : ""]
+    .filter(Boolean)
+    .join(" · ");
+  const installDisabled = lastOnline !== false ? "disabled" : "";
+  return `<div class="modhub-card" id="modhub-card-${entry.mod_id}">
+    <div class="modhub-card-body">
+      <div class="modhub-card-name">${escapeHtml(entry.name)}</div>
+      <div class="modhub-card-meta">${escapeHtml(meta)}</div>
+      <div class="progress-wrap" id="modhub-fill-wrap-${entry.mod_id}" hidden>
+        <div class="progress-fill" id="modhub-fill-${entry.mod_id}"></div>
+      </div>
+      <div class="modhub-card-status" id="modhub-status-${entry.mod_id}"></div>
+    </div>
+    <button type="button" class="ghost small modhub-install-btn" data-mod-id="${entry.mod_id}" ${installDisabled}>
+      Auf Server installieren
+    </button>
+  </div>`;
+}
+
+async function runModhubSearch() {
+  const query = $("modhub-query").value.trim();
+  const err = $("modhub-error");
+  err.hidden = true;
+  if (!query) return;
+  modhubFileNames = {};
+  $("modhub-results").innerHTML = `<p class="hint-inline">Suche…</p>`;
+  try {
+    const entries = await invoke("modhub_search", { query });
+    if (entries.length === 0) {
+      $("modhub-results").innerHTML = `<p class="hint-inline">Keine Treffer.</p>`;
+      return;
+    }
+    $("modhub-results").innerHTML = entries.map(modhubResultHtml).join("");
+  } catch (e) {
+    $("modhub-results").innerHTML = "";
+    err.textContent = "Suche fehlgeschlagen: " + e;
+    err.hidden = false;
+  }
+}
+
+// Kategorie „Update" (3): dort ist praktisch jeder Treffer bereits installiert, ein Abgleich
+// mit der eigenen Version lohnt sich also. Bei den anderen Kategorien (meist nicht installiert)
+// wäre der zusätzliche Abruf der Modliste nur Rauschen — deshalb nur hier.
+const MODHUB_UPDATE_CATEGORY = 3;
+
+async function runModhubBrowse() {
+  const category = Number($("modhub-category").value);
+  const err = $("modhub-error");
+  err.hidden = true;
+  modhubFileNames = {};
+  $("modhub-results").innerHTML = `<p class="hint-inline">Lade Kategorie…</p>`;
+  try {
+    const entries = await invoke("modhub_browse_category", { category, page: 0 });
+    entries.forEach((e) => (modhubFileNames[e.mod_id] = e.file_name));
+    if (entries.length === 0) {
+      $("modhub-results").innerHTML = `<p class="hint-inline">Keine Einträge in dieser Kategorie.</p>`;
+      return;
+    }
+    let installedByFile = null;
+    if (category === MODHUB_UPDATE_CATEGORY) {
+      const modsView = await invoke("mods_view");
+      installedByFile = {};
+      modsView.mods.forEach((m) => (installedByFile[m.file_name] = m.version));
+    }
+    $("modhub-results").innerHTML = entries
+      .map((e) => modhubResultHtml(e, installedByFile ? installedByFile[e.file_name] : undefined))
+      .join("");
+  } catch (e) {
+    $("modhub-results").innerHTML = "";
+    err.textContent = "Kategorie laden fehlgeschlagen: " + e;
+    err.hidden = false;
+  }
+}
+
+async function installModhubMod(modId, fileName) {
+  if (lastOnline !== false) return;
+  const err = $("modhub-error");
+  err.hidden = true;
+  const btn = $(`modhub-card-${modId}`)?.querySelector(".modhub-install-btn");
+  const fillWrap = $(`modhub-fill-wrap-${modId}`);
+  const fill = $(`modhub-fill-${modId}`);
+  const statusEl = $(`modhub-status-${modId}`);
+  if (btn) btn.disabled = true;
+  if (fillWrap) fillWrap.hidden = false;
+  if (statusEl) statusEl.textContent = "wird gestartet…";
+
+  const unlisten = await listen("modhub-progress", (event) => {
+    const { mod_id, done, total } = event.payload;
+    if (mod_id !== modId) return;
+    if (statusEl) {
+      statusEl.textContent = total
+        ? `${fmtBytes(done)} von ${fmtBytes(total)} (${Math.round((done / total) * 100)} %)`
+        : `${fmtBytes(done)} geladen…`;
+    }
+    if (fill && total) fill.style.width = `${Math.min(100, (done / total) * 100)}%`;
+  });
+  try {
+    await invoke("modhub_install", { modId, fileName: fileName || null });
+    if (fill) fill.style.width = "100%";
+    if (statusEl) {
+      statusEl.textContent = "installiert";
+      statusEl.classList.add("done");
+    }
+  } catch (e) {
+    if (fill) fill.classList.add("failed");
+    if (statusEl) {
+      statusEl.textContent = "fehlgeschlagen: " + e;
+      statusEl.classList.add("failed");
+    }
+    if (btn) btn.disabled = false;
+  } finally {
+    unlisten();
+  }
+}
+
 // --- Serverprofile (G1, Pflichtenheft 7.4) ---
 let profiles = []; // ProfileDto[] (ohne Passwort) aus list_profiles
 let activeProfileId = null; // Profil-ID der aktuell verbundenen Sitzung, sonst null
@@ -414,6 +843,7 @@ function show(view) {
   $("overview-view").hidden = view !== "overview";
   $("mods-view").hidden = view !== "mods";
   $("settings-view").hidden = view !== "settings";
+  $("deploy-view").hidden = view !== "deploy";
   $("mods-actionbar").hidden = view !== "mods" || modsState.selected.size === 0;
   document
     .querySelectorAll(".nav-item")
@@ -688,6 +1118,9 @@ function updateControlButtons() {
   $("btn-start").hidden = !connected || lastOnline !== false;
   $("btn-restart").hidden = !connected || lastOnline !== true;
   $("btn-stop").hidden = !connected || lastOnline !== true;
+  document.querySelectorAll(".modhub-install-btn").forEach((btn) => {
+    btn.disabled = lastOnline !== false;
+  });
 }
 
 async function refreshAfterControlAction(overview) {
@@ -798,6 +1231,7 @@ window.addEventListener("DOMContentLoaded", () => {
   );
   initModsView();
   initSettingsView();
+  initDeployView();
 
   // Statusleiste: Server-Dropdown (7.1)
   $("server-pick").addEventListener("click", (e) => {

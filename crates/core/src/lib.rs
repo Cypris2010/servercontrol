@@ -19,6 +19,7 @@ mod session;
 // Noch umzusetzen.
 mod control;
 mod logs;
+mod modfile;
 mod modhub;
 mod mods;
 mod settings;
@@ -28,9 +29,12 @@ use session::Session;
 
 pub use error::Error;
 pub use model::{
-    Difficulty, FieldOption, GameSettings, LogChunk, LogListing, LogSource, ModStatus, OpCtx,
-    PauseIfEmpty, Progress, ServerMod, ServerState, SettingsOptions, SettingsRow,
+    CatalogDetails, CatalogEntry, Difficulty, FieldOption, GameSettings, LogChunk, LogListing,
+    LogSource, ModStatus, ModhubCategoryEntry, OpCtx, PauseIfEmpty, Progress, ServerMod,
+    ServerState, SettingsOptions, SettingsRow,
 };
+pub use modfile::{inspect_local_mod, LocalModInfo};
+pub use modhub::catalog;
 pub use profile::{FileAccess, FileProtocol, ServerProfile};
 pub use secret::Secret;
 pub use store::AppSettings;
@@ -154,6 +158,14 @@ impl ServerControl {
         self.session.upload_mod(path).await
     }
 
+    /// Wie [`Self::upload_mod`], meldet aber laufend den Fortschritt (`progress`-Events, Kap. 7.3).
+    pub async fn upload_mod_with_progress<F>(&self, path: &std::path::Path, on_progress: F) -> Result<()>
+    where
+        F: Fn(Progress) + Send + Sync + 'static,
+    {
+        self.session.upload_mod_with_progress(path, on_progress).await
+    }
+
     /// Mod löschen — nur bei **gestopptem** Server (sonst `Error::ServerRunning`).
     pub async fn delete_mod(&self, file_name: &str) -> Result<()> {
         self.session.delete_mod(file_name).await
@@ -190,6 +202,51 @@ impl ServerControl {
 
     pub async fn save_settings(&self, s: &GameSettings, _ctx: &OpCtx) -> Result<()> {
         self.session.save_settings(s).await
+    }
+
+    // --- ModHub (F5, Kap. 7.7 LH) — Download durch den Server ---
+
+    /// Download auf dem Server auslösen — **nur bei gestopptem Server** (sonst
+    /// `Error::ServerRunning`); Fortschritt separat über [`Self::modhub_progress`].
+    pub async fn modhub_start(&self, mod_id: u64) -> Result<()> {
+        self.session.modhub_start(mod_id).await
+    }
+
+    /// Fortschritt eines laufenden ModHub-Downloads (`{downloaded, total}`).
+    pub async fn modhub_progress(&self, mod_id: u64) -> Result<Progress> {
+        self.session.modhub_progress(mod_id).await
+    }
+
+    /// Laufenden ModHub-Download abbrechen.
+    pub async fn modhub_cancel(&self, mod_id: u64) -> Result<()> {
+        self.session.modhub_cancel(mod_id).await
+    }
+
+    /// Serverseitige ModHub-Kategorieseite lesen (Kategorie-IDs Kap. 7.7 LH: 0 DLC, 1 All,
+    /// 3 Update, 5 Latest, 6 Best, 7 Most Downloaded, 8 Package, 9 Official Mods,
+    /// 10–13 Map, 14 Gameplay) — **nur bei gestopptem Server**.
+    pub async fn modhub_category(
+        &self,
+        category: u8,
+        page: u32,
+    ) -> Result<Vec<ModhubCategoryEntry>> {
+        self.session.modhub_category(category, page).await
+    }
+
+    /// Bequemlichkeit: startet, pollt bis fertig und verifiziert (Q3) den erwarteten Dateinamen
+    /// in der Mod-Liste — sonst `NotProven`.
+    pub async fn modhub_download<F>(
+        &self,
+        mod_id: u64,
+        expected_file_name: &str,
+        on_progress: F,
+    ) -> Result<()>
+    where
+        F: Fn(Progress) + Send + Sync,
+    {
+        self.session
+            .modhub_download(mod_id, expected_file_name, on_progress)
+            .await
     }
 
     // Weitere Operationen (upload_mod, delete_mod, put_file/get_file/list_dir, Logs,

@@ -4,9 +4,10 @@
 
 use serde::{Deserialize, Serialize};
 use servercontrol_core::{
-    Difficulty, GameSettings, ModStatus, OpCtx, PauseIfEmpty, ProfileId, ServerControl, ServerMod,
-    ServerProfile, ServerState, SettingsOptions, SettingsRow,
+    catalog, CatalogEntry, Difficulty, GameSettings, ModStatus, OpCtx, PauseIfEmpty, ProfileId,
+    ServerControl, ServerMod, ServerProfile, ServerState, SettingsOptions, SettingsRow,
 };
+use tauri::Emitter;
 use tokio::sync::Mutex;
 
 /// App-Zustand: die aktive Sitzung (eine je verbundenem Server) samt zugehöriger Profil-ID.
@@ -264,6 +265,288 @@ async fn delete_mod(state: tauri::State<'_, AppState>, file_name: String) -> Res
     sc.delete_mod(&file_name).await.map_err(|e| e.to_string())
 }
 
+/// `progress`-Event-Payload (Kap. 7.3) für den laufenden Upload.
+#[derive(Clone, Serialize)]
+struct UploadProgress {
+    done: u64,
+    total: Option<u64>,
+}
+
+/// Gemeinsamer Kern für `upload_mod`/`overwrite_mod`: hochladen und dabei den Fortschritt über
+/// das `progress`-Event melden, gedrosselt auf ~1 % Schritte (bzw. min. 256 KB) — sonst würden
+/// Zehntausende Einzel-Events pro Datei die IPC-Brücke fluten.
+async fn run_upload_with_progress(
+    app: &tauri::AppHandle,
+    sc: &ServerControl,
+    path: &str,
+) -> Result<(), String> {
+    let last_emitted = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let app = app.clone();
+    sc.upload_mod_with_progress(std::path::Path::new(path), move |p| {
+        let total = p.total.unwrap_or(0);
+        let step = (total / 100).max(262_144);
+        let prev = last_emitted.load(std::sync::atomic::Ordering::Relaxed);
+        if p.done.saturating_sub(prev) >= step || Some(p.done) == p.total {
+            last_emitted.store(p.done, std::sync::atomic::Ordering::Relaxed);
+            let _ = app.emit(
+                "progress",
+                UploadProgress {
+                    done: p.done,
+                    total: p.total,
+                },
+            );
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Mod über das Web-Formular hochladen (G3, 7.6) — bis 1,71 GB, sonst `Error::NoFileAccess`
+/// (FTP/SFTP-Weg ist noch nicht umgesetzt). `path` kommt vom nativen Datei-Dialog (Frontend),
+/// die Bibliothek liest die Datei selbst ein und verifiziert danach die Modliste (Q3).
+///
+/// **Überschreibt eine bereits vorhandene Datei gleichen Namens nicht** (live gegen den Server
+/// verifiziert) — dafür gibt es [`overwrite_mod`]. Die GUI klärt das vorher über [`plan_uploads`].
+#[tauri::command]
+async fn upload_mod(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    run_upload_with_progress(&app, sc, &path).await
+}
+
+/// War `file_name` vor einem Update aktiv? Ein Update (Löschen+Neu-Hochladen wie ein frischer
+/// ModHub-Download) legt die Datei neu an — das Panel stuft sie dabei immer als **inaktiv**
+/// ein, selbst wenn die alte Version aktiv war (live beobachtet). Damit ein Update das nicht
+/// unbemerkt zurücksetzt, merken wir uns den Stand vorher und reaktivieren ihn danach über
+/// [`restore_active_if_needed`] — der Dateiname bleibt über das Update hinweg derselbe stabile
+/// Schlüssel (Kap. 7.3 LH).
+async fn was_active(sc: &ServerControl, file_name: &str) -> Result<bool, String> {
+    Ok(sc
+        .list_mods()
+        .await
+        .map_err(|e| e.to_string())?
+        .iter()
+        .any(|m| m.file_name == file_name && m.status == ModStatus::Active))
+}
+
+/// Nach einem Update den vorherigen Aktivierungsstatus wiederherstellen, falls nötig — nur bei
+/// gestopptem Server aufrufbar, was Löschen/ModHub-Download hier ohnehin schon voraussetzen.
+async fn restore_active_if_needed(
+    sc: &ServerControl,
+    file_name: &str,
+    was_active: bool,
+) -> Result<(), String> {
+    if was_active {
+        sc.set_active(&[file_name.to_string()], &[])
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Vorhandene Mod-Datei ersetzen: da reines Hochladen nicht überschreibt (s. o.), erst löschen
+/// (nur bei gestopptem Server, `Error::ServerRunning` sonst — wie `delete_mod`) und dann neu
+/// hochladen, mit Fortschritt wie [`upload_mod`]. War der Mod vorher aktiv, wird er danach
+/// automatisch wieder aktiviert (s. [`was_active`]).
+#[tauri::command]
+async fn overwrite_mod(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    path: String,
+    file_name: String,
+) -> Result<(), String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    let active_before = was_active(sc, &file_name).await?;
+    sc.delete_mod(&file_name).await.map_err(|e| e.to_string())?;
+    run_upload_with_progress(&app, sc, &path).await?;
+    restore_active_if_needed(sc, &file_name, active_before).await
+}
+
+/// Ein einzelner Eintrag im Upload-Plan (G3): eigene Version gegen den Serverstand abgeglichen,
+/// damit die GUI vor dem eigentlichen Hochladen entscheiden lässt (7.6).
+#[derive(Serialize)]
+struct UploadPlanItem {
+    path: String,
+    file_name: String,
+    is_fs25_mod: bool,
+    local_version: Option<String>,
+    exists_on_server: bool,
+    server_version: Option<String>,
+    server_status: Option<ModStatus>,
+}
+
+/// Für jede gewählte Datei: lokal prüfen, ob überhaupt ein FS25-Mod drinsteckt und welche
+/// Version er deklariert (`modDesc.xml`, kein Upload), und mit der aktuellen Modliste des
+/// Servers abgleichen (Abgleich über den Dateinamen — so identifiziert der Server Mods auch
+/// sonst). Reine Lesevorgänge, kein Schreibzugriff.
+#[tauri::command]
+async fn plan_uploads(
+    state: tauri::State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<Vec<UploadPlanItem>, String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    let server_mods = sc.list_mods().await.map_err(|e| e.to_string())?;
+
+    let mut items = Vec::with_capacity(paths.len());
+    for path in paths {
+        let file_name = std::path::Path::new(&path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let read_path = path.clone();
+        let info = tokio::task::spawn_blocking(move || {
+            servercontrol_core::inspect_local_mod(std::path::Path::new(&read_path))
+        })
+        .await
+        .unwrap_or_default();
+        let existing = server_mods.iter().find(|m| m.file_name == file_name);
+        items.push(UploadPlanItem {
+            path,
+            file_name,
+            is_fs25_mod: info.is_fs25_mod,
+            local_version: info.version,
+            exists_on_server: existing.is_some(),
+            server_version: existing.and_then(|m| m.version.clone()),
+            server_status: existing.map(|m| m.status),
+        });
+    }
+    Ok(items)
+}
+
+/// Alle FS25-Mod-Dateien (`.zip`/`.dlc` mit `modDesc.xml`) direkt in einem Ordner auflisten
+/// (nicht rekursiv, wie der Mods-Ordner des Servers selbst) — für die Ordnerauswahl beim
+/// Bereitstellen (G3). Andere Zip-Dateien im Ordner werden stillschweigend übersprungen.
+#[tauri::command]
+async fn list_mod_files(dir: String) -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(move || {
+        let mut files = Vec::new();
+        for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or_default()
+                .to_lowercase();
+            if (ext == "zip" || ext == "dlc")
+                && servercontrol_core::inspect_local_mod(&path).is_fs25_mod
+            {
+                files.push(path.to_string_lossy().to_string());
+            }
+        }
+        files.sort();
+        Ok(files)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// --- G3b: ModHub-Suche (Kann-Ziel, Pflichtenheft 4.4 / 7.7 LH) ---
+//
+// Die Suche selbst läuft gegen die öffentliche ModHub-Website, ohne Server-Sitzung (`catalog`
+// braucht kein `connect`). Der eigentliche Download läuft dagegen **durch den Server** — dafür
+// ist eine verbundene Sitzung nötig, und der Server erzwingt „nur bei gestopptem Server".
+
+/// Namenssuche auf der öffentlichen ModHub-Website — unabhängig von einer Server-Sitzung.
+#[tauri::command]
+async fn modhub_search(query: String) -> Result<Vec<CatalogEntry>, String> {
+    catalog::search(&query).await.map_err(|e| e.to_string())
+}
+
+/// `progress`-Event-Payload für einen laufenden ModHub-Download — je `mod_id` eine eigene
+/// Fortschrittszeile in der GUI, analog zur Datei-Upload-Warteschlange.
+#[derive(Clone, Serialize)]
+struct ModhubProgress {
+    mod_id: u64,
+    done: u64,
+    total: Option<u64>,
+}
+
+/// Einen ModHub-Mod auf dem Server installieren, dann bis zum Ende pollen — nur bei gestopptem
+/// Server (sonst `Error::ServerRunning`, wie Mod-Löschen/-Umschalten). Für die Q3-Verifikation
+/// (steht der Mod danach in der Liste?) braucht es den erwarteten Dateinamen: kommt er aus der
+/// Server-Kategorieseite (`modhub_browse_category`), kennt die GUI ihn schon und übergibt ihn
+/// direkt — sonst (Namenssuche über die öffentliche Website) wird er hier über die Detailseite
+/// nachgeholt. War eine gleichnamige, bereits vorhandene Datei (Update-Fall) aktiv, wird sie
+/// danach automatisch wieder aktiviert (s. [`was_active`]) — ein Neuanlegen stuft das Panel
+/// sonst immer als inaktiv ein.
+#[tauri::command]
+async fn modhub_install(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    mod_id: u64,
+    file_name: Option<String>,
+) -> Result<(), String> {
+    let file_name = match file_name {
+        Some(f) => f,
+        None => catalog::details(mod_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .file_name
+            .ok_or("ModHub-Detailseite ohne Dateinamen")?,
+    };
+
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    let active_before = was_active(sc, &file_name).await?;
+
+    let last_emitted = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let app_handle = app.clone();
+    sc.modhub_download(mod_id, &file_name, move |p| {
+        let total = p.total.unwrap_or(0);
+        let step = (total / 100).max(262_144);
+        let prev = last_emitted.load(std::sync::atomic::Ordering::Relaxed);
+        if p.done.saturating_sub(prev) >= step || Some(p.done) == p.total {
+            last_emitted.store(p.done, std::sync::atomic::Ordering::Relaxed);
+            let _ = app_handle.emit(
+                "modhub-progress",
+                ModhubProgress {
+                    mod_id,
+                    done: p.done,
+                    total: p.total,
+                },
+            );
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    restore_active_if_needed(sc, &file_name, active_before).await
+}
+
+/// Laufenden ModHub-Download abbrechen.
+#[tauri::command]
+async fn modhub_cancel(state: tauri::State<'_, AppState>, mod_id: u64) -> Result<(), String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    sc.modhub_cancel(mod_id).await.map_err(|e| e.to_string())
+}
+
+/// Serverseitige ModHub-Kategorieseite lesen (Kap. 7.7/10.1 LH) — nur bei gestopptem Server
+/// (sonst `Error::ServerRunning`). Liefert bereits den Dateinamen je Eintrag, damit
+/// `modhub_install` danach ohne einen weiteren Abruf der öffentlichen Website auskommt.
+#[tauri::command]
+async fn modhub_browse_category(
+    state: tauri::State<'_, AppState>,
+    category: u8,
+    page: u32,
+) -> Result<Vec<servercontrol_core::ModhubCategoryEntry>, String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    sc.modhub_category(category, page)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // --- G4: Serversteuerung im Kopf (Pflichtenheft 7.7) ---
 //
 // start/stop/restart verifizieren intern selbst (Q3, Kap. 9) und geben erst bei
@@ -428,6 +711,7 @@ async fn save_settings(
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -454,7 +738,15 @@ pub fn run() {
             stop_server,
             restart_server,
             settings_view,
-            save_settings
+            save_settings,
+            upload_mod,
+            overwrite_mod,
+            plan_uploads,
+            list_mod_files,
+            modhub_search,
+            modhub_install,
+            modhub_cancel,
+            modhub_browse_category
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

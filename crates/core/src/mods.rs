@@ -56,11 +56,20 @@ pub(crate) fn parse_mods(html: &str) -> Vec<ServerMod> {
 fn parse_row(row: ElementRef, section: ModStatus) -> Option<ServerMod> {
     // Wertspalten in fester Reihenfolge: [Name, Version, Author, Filename, Size].
     let value_sel = Selector::parse("div.col-xs-9.col-md-12").unwrap();
-    let vals: Vec<String> = row
-        .select(&value_sel)
+    let value_cells: Vec<ElementRef> = row.select(&value_sel).collect();
+    let vals: Vec<String> = value_cells
+        .iter()
         .map(|e| e.text().collect::<String>().trim().to_string())
         .collect();
     let col = |i: usize| vals.get(i).and_then(|s| non_empty(s.clone()));
+
+    // „Update verfügbar"-Icon (live verifiziert): steckt direkt in der Versionsspalte, als
+    // `img[src*="updateIcon"]` — verlinkt nur auf die ModHub-Kategorie „Update", nicht auf eine
+    // konkrete `mod_id` (die holt die GUI bei Bedarf separat über die Kategorieseite).
+    let update_sel = Selector::parse(r#"img[src*="updateIcon"]"#).unwrap();
+    let update_available = value_cells
+        .get(1)
+        .is_some_and(|v| v.select(&update_sel).next().is_some());
 
     // Dateiname + Status: Checkbox (offline) > id (aktive) / Filename-Spalte + Abschnitt.
     let cb = row
@@ -92,6 +101,7 @@ fn parse_row(row: ElementRef, section: ModStatus) -> Option<ServerMod> {
         author: col(2),
         size: vals.get(4).and_then(|s| parse_size(s)),
         status,
+        update_available,
     })
 }
 
@@ -133,7 +143,7 @@ pub(crate) fn toggle_body(
 }
 
 /// „393.37 MB" → Bytes. `None`, wenn nicht als `<Zahl> <Einheit>` erkennbar.
-fn parse_size(s: &str) -> Option<u64> {
+pub(crate) fn parse_size(s: &str) -> Option<u64> {
     let (num, unit) = s.trim().split_once(' ')?;
     let value: f64 = num.trim().parse().ok()?;
     let mult = match unit.trim().to_ascii_uppercase().as_str() {

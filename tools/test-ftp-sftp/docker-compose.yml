@@ -1,0 +1,38 @@
+# Lokale Test-Server für FTP/SFTP (MZ4). NICHT für echte Daten/Zugangsdaten gedacht —
+# reines Sandbox-Setup, um die Upload-/Dateizugriff-Implementierung gegen echtes FTP/SFTP
+# zu testen, bevor der reale Zielserver angefasst wird.
+#
+# Start:   docker compose up -d
+# Stop:    docker compose down
+# Reset:   docker compose down -v && rm -rf data/mods/*
+#
+# Beide Container teilen sich denselben mods/-Ordner (./data/mods), damit sich Uploads über
+# beide Protokolle am selben Ort wiederfinden — analog FileAccess.mods_path im echten Profil.
+
+services:
+  sftp:
+    image: atmoz/sftp:latest
+    # user:pass:uid:gid:mods  -> Login "testuser" / "testpass", Chroot auf /home/testuser,
+    # Ordner "mods" darin ist das Ziel für FileAccess.mods_path = "/mods".
+    command: testuser:testpass:1001:1001:mods
+    ports:
+      - "2222:22"
+    volumes:
+      - ./data/mods:/home/testuser/mods
+      # Public-Key-Auth testen: beliebige *.pub-Dateien hier ablegen (siehe README/gen-key.sh).
+      - ./keys:/home/testuser/.ssh/keys:ro
+
+  ftp:
+    image: delfer/alpine-ftp-server:latest
+    environment:
+      # Format: name|password|folder|uid|gid (siehe /bin/start_vsftpd.sh im Image —
+      # FTP_USER/FTP_PASS/PASV_* aus der Doku anderer Alpine-FTP-Images greifen hier NICHT).
+      USERS: testuser|testpass|/ftp/testuser|1001|1001
+      ADDRESS: 127.0.0.1
+      MIN_PORT: 21100
+      MAX_PORT: 21110
+    ports:
+      - "2121:21"
+      - "21100-21110:21100-21110"
+    volumes:
+      - ./data/mods:/ftp/testuser
