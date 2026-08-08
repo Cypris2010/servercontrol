@@ -885,6 +885,9 @@ function updateNavLocks() {
   document.querySelectorAll(".nav-item").forEach((b) => {
     if (b.dataset.view !== "overview") b.disabled = !connected;
   });
+  // Punkt neben dem Servernamen im Kopf spiegelt die Verbindung wider (wie `.m-dot` im
+  // Server-Menü/in der Profilliste) — wurde bisher nie aktualisiert, blieb immer grau.
+  $("pick-dot").classList.toggle("on", connected);
 }
 
 async function loadProfiles() {
