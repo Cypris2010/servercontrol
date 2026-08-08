@@ -5,6 +5,24 @@ const { listen } = window.__TAURI__.event;
 
 const $ = (id) => document.getElementById(id);
 
+// Einheitliches Ladefeedback: Button während `fn()` sperren, Spinner zeigen (CSS
+// `.is-loading::before`) und optional den Text austauschen — statt in jeder Ladefunktion
+// eigene Sperr-/Text-Logik zu pflegen.
+async function withBusy(button, fn, busyLabel) {
+  if (!button) return fn();
+  const original = button.textContent;
+  button.disabled = true;
+  button.classList.add("is-loading");
+  if (busyLabel) button.textContent = busyLabel;
+  try {
+    return await fn();
+  } finally {
+    button.disabled = false;
+    button.classList.remove("is-loading");
+    if (busyLabel) button.textContent = original;
+  }
+}
+
 // --- Mods (G2, Pflichtenheft 7.5) ---
 const modsState = {
   all: [], // ServerMod[] wie von mods_view geliefert
@@ -73,6 +91,10 @@ function modsVisible() {
         return a.file_name.localeCompare(b.file_name);
       case "size":
         return (a.size || 0) - (b.size || 0);
+      case "hub":
+        return (a.from_modhub === b.from_modhub) ? 0 : a.from_modhub ? -1 : 1;
+      case "issues":
+        return (a.issue_count || 0) - (b.issue_count || 0);
       default:
         return (a.display_name || a.file_name).localeCompare(b.display_name || b.file_name);
     }
@@ -133,6 +155,12 @@ function renderMods() {
         <td class="c-file">${m.file_name}</td>
         <td class="c-size">${fmtSize(m.size)}</td>
         <td class="c-dlc">${m.is_dlc ? '<span class="dlc-tag">DLC</span>' : "—"}</td>
+        <td class="c-hub">${m.from_modhub ? '<span class="hub-tag" title="Von ModHub installiert">ModHub</span>' : '<span class="hub-tag hub-tag-local" title="Nicht von ModHub, z. B. manuell hochgeladen">Lokal</span>'}</td>
+        <td class="c-issues">${
+          m.issue_count > 0
+            ? `<span class="issues-tag" title="${escapeHtml((m.issues || []).join("\n")) || "Details werden geladen…"}">${m.issue_count}</span>`
+            : "—"
+        }</td>
         <td class="c-del">
           <button class="ghost danger small btn-del-mod" ${locked ? "disabled" : ""} title="Mod löschen">Löschen</button>
         </td>
@@ -150,7 +178,7 @@ async function loadMods() {
   const err = $("mods-error");
   err.hidden = true;
   try {
-    const view = await invoke("mods_view");
+    const view = await withBusy($("btn-mods-refresh"), () => invoke("mods_view"));
     modsState.all = view.mods;
     modsState.online = view.online;
     modsState.selected.clear();
@@ -349,7 +377,7 @@ async function loadSettings() {
   const err = $("settings-error");
   err.hidden = true;
   try {
-    settingsView = await invoke("settings_view");
+    settingsView = await withBusy($("btn-settings-refresh"), () => invoke("settings_view"));
     renderSettings();
   } catch (e) {
     err.textContent = String(e);
@@ -1058,9 +1086,16 @@ async function deleteProfileForm() {
   }
 }
 
-async function connectToProfile(id) {
+async function connectToProfile(id, button) {
+  // Menü/Editor schließen meist sofort — der Statusbadge im Kopf bleibt aber immer sichtbar,
+  // daher zeigt der während des Logins den Ladezustand (zusätzlich zum Button, falls der noch
+  // im Bild ist, z. B. im Editor).
+  const badge = $("status-badge");
+  const badgeBefore = { text: badge.textContent, cls: badge.className };
+  badge.textContent = "verbinde…";
+  badge.className = "badge badge-off is-loading";
   try {
-    const overview = await invoke("connect_profile", { id });
+    const overview = await withBusy(button, () => invoke("connect_profile", { id }), "Verbinden…");
     activeProfileId = id;
     const p = profiles.find((x) => x.id === id) || (await invoke("list_profiles")).find((x) => x.id === id);
     $("server-name").textContent = p ? p.name : "";
@@ -1072,6 +1107,8 @@ async function connectToProfile(id) {
     renderServerMenu();
     renderProfileList();
   } catch (e) {
+    badge.textContent = badgeBefore.text;
+    badge.className = badgeBefore.cls;
     return e;
   }
   return null;
@@ -1080,15 +1117,15 @@ async function connectToProfile(id) {
 async function connectFromEditor() {
   const err = $("profile-error");
   err.hidden = true;
-  const e = await connectToProfile(editingProfileId);
+  const e = await connectToProfile(editingProfileId, $("pf-connect"));
   if (e) {
     err.textContent = String(e);
     err.hidden = false;
   }
 }
 
-async function connectFromMenu(id) {
-  const e = await connectToProfile(id);
+async function connectFromMenu(id, button) {
+  const e = await connectToProfile(id, button);
   if (e) alert("Verbinden fehlgeschlagen: " + e);
 }
 
@@ -1184,14 +1221,10 @@ function renderOverview(o) {
 }
 
 async function refresh() {
-  const btn = $("btn-refresh");
-  btn.disabled = true;
   try {
-    renderOverview(await invoke("overview"));
+    renderOverview(await withBusy($("btn-refresh"), () => invoke("overview")));
   } catch (e) {
     alert("Aktualisieren fehlgeschlagen: " + e);
-  } finally {
-    btn.disabled = false;
   }
 }
 
@@ -1245,7 +1278,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const b = e.target.closest("button[data-id]");
     if (!b) return;
     toggleServerMenu(false);
-    if (b.dataset.id !== activeProfileId) connectFromMenu(b.dataset.id);
+    if (b.dataset.id !== activeProfileId) connectFromMenu(b.dataset.id, b);
   });
   $("menu-manage").addEventListener("click", () => {
     toggleServerMenu(false);

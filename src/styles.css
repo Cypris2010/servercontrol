@@ -176,7 +176,10 @@ button:disabled { opacity: 0.6; cursor: default; }
 .filters button.on { background: var(--accent); color: var(--accent-ink); }
 
 .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+/* `min-width: 100%` + `width: max-content`, nicht `width: 100%`: die Tabelle darf über die
+   Wrapper-Breite hinaus wachsen, wenn die (nowrap) Spalteninhalte das brauchen — der Wrapper
+   scrollt dann horizontal, statt die Spalten bis zur Unleserlichkeit zusammenzuquetschen. */
+table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { padding: 8px 10px; text-align: left; white-space: nowrap; }
 thead th { border-bottom: 1px solid var(--line); color: var(--ink-soft); font-weight: 600; position: sticky; top: 0; background: var(--panel); }
 tbody tr:not(:last-child) td { border-bottom: 1px solid var(--line); }
@@ -191,6 +194,30 @@ th.sorted { color: var(--ink); }
 .badge-orphan { background: color-mix(in srgb, var(--red) 18%, transparent); color: var(--red); padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .update-badge { color: #d9822b; font-weight: 700; }
 .dlc-tag { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); padding: 2px 7px; border-radius: 5px; font-size: 11px; font-weight: 700; }
+.hub-tag { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); padding: 2px 7px; border-radius: 5px; font-size: 11px; font-weight: 600; }
+.hub-tag-local { background: color-mix(in srgb, var(--grey) 18%, transparent); color: var(--grey); }
+.issues-tag { background: color-mix(in srgb, var(--red) 18%, transparent); color: var(--red); padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; cursor: help; }
+
+/* Einheitliches Ladefeedback (withBusy in main.js): Spinner vor dem Button-Text, solange
+   ein Request läuft — betrifft u. a. "Aktualisieren"-Buttons und den Server-Connect.
+   Als normales Inline-Element (nicht absolut positioniert) platziert, damit er sich unabhängig
+   von Button-Padding/Zeilenhöhe immer sauber neben den Text setzt. */
+.is-loading { cursor: wait; }
+.is-loading::before {
+  content: "";
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 7px;
+  vertical-align: -1px;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
 button.small { padding: 4px 10px; font-size: 12px; }
 .ghost.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }

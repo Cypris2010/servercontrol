@@ -38,6 +38,17 @@ pub struct ServerMod {
     /// parsen — verlinkt lediglich auf die ModHub-Kategorie „Update" (`category=3`), nicht auf
     /// eine konkrete `mod_id` (die holt sich die GUI bei Bedarf über die Kategorieseite, Kap. 10.1).
     pub update_available: bool,
+    /// Stammt der Mod aus dem ModHub? `mods.html`-Spalte „ModHub" (`Yes`/`No`, live geprüft).
+    /// Bei Herkunft von der Home-Seite (Fallback) mangels Spalte immer `false`.
+    pub from_modhub: bool,
+    /// Anzahl der beim letzten Serverstart geloggten Probleme mit diesem Mod (`mods.html`-
+    /// Spalte „Issues", live geprüft) — z. B. zu große Texturen, zu viele Dateien. `0` = keine
+    /// bekannten Probleme (oder Herkunft von der Home-Seite, die diese Spalte nicht hat).
+    pub issue_count: u32,
+    /// Die einzelnen Problemtexte, sofern `issue_count > 0`: kommen von der Mod-Detailseite
+    /// (`mod.html?mod_index=<i>`, live geprüft) — dieselbe Seite, die auch gekürzte Felder
+    /// nachliefert, daher **kein** zusätzlicher Request nur für die Issues.
+    pub issues: Vec<String>,
 }
 
 /// Spiel-Einstellungen = Felder des `configuration`-Formulars (Kap. 6.1),

@@ -162,9 +162,51 @@ impl Session {
         parse_state(&self.home().await?)
     }
 
-    /// Aktive und inaktive Mods lesen (Pflichtenheft 10.5 LH).
+    /// Aktive und inaktive Mods lesen (Pflichtenheft 10.5 LH). Quelle ist primär **`mods.html`**
+    /// (Browser-DevTools live geprüft, 2026-08-07): dort trägt jede Zeile eine explizite
+    /// `Active`-Spalte **und** — über den Löschknopf — den vollen, ungekürzten Dateinamen; die
+    /// Home-Seite liefert den vollen Namen dagegen nur für aktive Mods (über die Checkbox), bei
+    /// inaktiven im laufenden Server nur die ggf. gekürzte Filename-Spalte.
+    ///
+    /// **Fallback auf die Home-Seite**, falls `mods.html` keine Mods liefert: Das Panel zeigt
+    /// dort bei gestopptem Server zusätzlich Löschknöpfe, das Verhalten bei laufendem Server ist
+    /// nicht live verifiziert — die Home-Seite ist es (`laufender_server_status_aus_abschnitt`).
+    /// So bleibt die Liste in jedem Fall gefüllt, auch falls `mods.html` sich im laufenden
+    /// Zustand anders verhält als bisher angenommen.
+    ///
+    /// **Gekürzte Felder** (Name/Autor/Dateiname enden auf „…", z. B. lange ModHub-Titel) werden
+    /// von der Mod-Detailseite (`mod.html?mod_index=<i>`) nachgeladen — dort stehen sie immer
+    /// ungekürzt (live geprüft). Pro betroffener Mod **ein** zusätzlicher Request, unabhängig
+    /// davon, wie viele ihrer Felder gekürzt sind (nicht pro Feld); Mods ohne gekürztes Feld
+    /// verursachen keinen zusätzlichen Request.
     pub(crate) async fn list_mods(&self) -> Result<Vec<crate::model::ServerMod>> {
-        Ok(crate::mods::parse_mods(&self.home().await?))
+        let mods_url = self.mods_page_url()?;
+        let parsed = crate::mods::parse_mods_page_indexed(&self.get_authenticated(mods_url).await?);
+        if parsed.is_empty() {
+            return Ok(crate::mods::parse_mods(&self.home().await?));
+        }
+
+        let mut mods = Vec::with_capacity(parsed.len());
+        for entry in parsed {
+            let mut info = entry.info;
+            if crate::mods::needs_detail(&info) {
+                if let Some(mod_index) = entry.mod_index {
+                    if let Ok(html) = self.get_authenticated(self.mod_detail_url(mod_index)?).await {
+                        crate::mods::apply_detail(&mut info, crate::mods::parse_mod_detail(&html));
+                    }
+                }
+            }
+            mods.push(info);
+        }
+        Ok(mods)
+    }
+
+    /// URL der Mod-Detailseite (`mod.html?mod_index=<i>&lang=en`) — trägt Name/Autor/Dateiname
+    /// ungekürzt, anders als die Listenansicht auf `mods.html`.
+    fn mod_detail_url(&self, mod_index: u32) -> Result<Url> {
+        self.base_url
+            .join(&format!("mod.html?mod_index={mod_index}&lang=en"))
+            .map_err(|e| Error::Parse(e.to_string()))
     }
 
     /// Einen Mod löschen — **nur bei gestopptem Server** (Kap. 7.3 LH). Auf `mods.html` trägt
@@ -619,13 +661,20 @@ impl Session {
     /// Authentifizierten GET der Home-Seite; erneuert die Sitzung **einmal transparent**, falls
     /// sie abgelaufen ist (Login-Formular zurück statt Home) — reaktiv, kein Pollen (Kap. 6).
     pub(crate) async fn home(&self) -> Result<String> {
-        let body = self.get_text(self.base_url.clone()).await?;
+        self.get_authenticated(self.base_url.clone()).await
+    }
+
+    /// Wie [`Self::home`], aber für eine beliebige Panel-Seite: authentifizierter GET, mit
+    /// **einmal transparentem** Re-Login, falls die Sitzung abgelaufen ist (Login-Formular
+    /// statt der angefragten Seite zurückkommt) — reaktiv, kein Pollen (Kap. 6).
+    async fn get_authenticated(&self, url: Url) -> Result<String> {
+        let body = self.get_text(url.clone()).await?;
         if !is_login_page(&body) {
             return Ok(body);
         }
-        // Sitzung abgelaufen → einmal neu anmelden und Home erneut holen.
+        // Sitzung abgelaufen → einmal neu anmelden und die Seite erneut holen.
         self.authenticate().await?;
-        let body = self.get_text(self.base_url.clone()).await?;
+        let body = self.get_text(url).await?;
         if is_login_page(&body) {
             return Err(Error::AuthFailed);
         }

@@ -31,3 +31,4 @@ tauri-plugin-dialog = "2"
 servercontrol-core = { path = "../crates/core" }
 tokio = { version = "1", features = ["sync"] }
 url = "2"
+tauri-plugin-window-state = "2.4.1"
