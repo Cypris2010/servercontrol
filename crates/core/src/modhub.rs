@@ -133,8 +133,7 @@ pub(crate) fn parse_category(html: &str) -> Result<Vec<ModhubCategoryEntry>> {
     let select_sel = Selector::parse("select#selectCategory").unwrap();
     if doc.select(&select_sel).next().is_none() {
         return Err(Error::Parse(
-            "ModHub-Kategorieseite nicht erkannt (Server läuft oder Layout geändert?)"
-                .to_string(),
+            "ModHub-Kategorieseite nicht erkannt (Server läuft oder Layout geändert?)".to_string(),
         ));
     }
 
@@ -197,7 +196,12 @@ fn parse_details(html: &str, mod_id: u64) -> Result<CatalogDetails> {
         if row.select(&label_sel).next().is_none() {
             continue;
         }
-        let label = row.select(&label_sel).next().unwrap().text().collect::<String>();
+        let label = row
+            .select(&label_sel)
+            .next()
+            .unwrap()
+            .text()
+            .collect::<String>();
         let label = label.trim().to_string();
         let value = row
             .select(&value_sel)

@@ -191,7 +191,10 @@ impl Session {
             let mut info = entry.info;
             if crate::mods::needs_detail(&info) {
                 if let Some(mod_index) = entry.mod_index {
-                    if let Ok(html) = self.get_authenticated(self.mod_detail_url(mod_index)?).await {
+                    if let Ok(html) = self
+                        .get_authenticated(self.mod_detail_url(mod_index)?)
+                        .await
+                    {
                         crate::mods::apply_detail(&mut info, crate::mods::parse_mod_detail(&html));
                     }
                 }
@@ -249,7 +252,11 @@ impl Session {
     /// Wie [`Self::upload_mod`], meldet aber laufend den Fortschritt (Kap. 7.3, `progress`-
     /// Events) — die Datei wird gestreamt statt komplett in den Speicher gelesen, damit auch
     /// Dateien nahe der 1,71-GB-Grenze den Prozess nicht aufblähen.
-    pub(crate) async fn upload_mod_with_progress<F>(&self, path: &Path, on_progress: F) -> Result<()>
+    pub(crate) async fn upload_mod_with_progress<F>(
+        &self,
+        path: &Path,
+        on_progress: F,
+    ) -> Result<()>
     where
         F: Fn(crate::model::Progress) + Send + Sync + 'static,
     {
@@ -281,13 +288,11 @@ impl Session {
                 });
             }
         });
-        let part = reqwest::multipart::Part::stream_with_length(
-            reqwest::Body::wrap_stream(stream),
-            total,
-        )
-        .file_name(file_name.clone())
-        .mime_str("application/zip")
-        .map_err(map_reqwest)?;
+        let part =
+            reqwest::multipart::Part::stream_with_length(reqwest::Body::wrap_stream(stream), total)
+                .file_name(file_name.clone())
+                .mime_str("application/zip")
+                .map_err(map_reqwest)?;
         let form = reqwest::multipart::Form::new()
             .part("file", part)
             .text("file_upload", "Upload");
@@ -419,7 +424,9 @@ impl Session {
         }
         let url = self
             .base_url
-            .join(&format!("mods.html?category={category}&page={page}&lang=en"))
+            .join(&format!(
+                "mods.html?category={category}&page={page}&lang=en"
+            ))
             .map_err(|e| Error::Parse(e.to_string()))?;
         let html = self.get_text(url).await?;
         crate::modhub::parse_category(&html)
@@ -805,7 +812,11 @@ fn redirect_location(resp: &Response) -> Option<Url> {
     if !resp.status().is_redirection() {
         return None;
     }
-    let location = resp.headers().get(reqwest::header::LOCATION)?.to_str().ok()?;
+    let location = resp
+        .headers()
+        .get(reqwest::header::LOCATION)?
+        .to_str()
+        .ok()?;
     resp.url().join(location).ok()
 }
 

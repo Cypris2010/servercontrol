@@ -273,7 +273,10 @@ pub(crate) fn parse_mod_detail(html: &str) -> ModDetail {
         let Some(value_td) = row.select(&td_sel).nth(1) else {
             continue;
         };
-        fields.insert(label.clone(), value_td.text().collect::<String>().trim().to_string());
+        fields.insert(
+            label.clone(),
+            value_td.text().collect::<String>().trim().to_string(),
+        );
 
         if label == "Issues" {
             let detail_row = row
@@ -304,10 +307,7 @@ pub(crate) fn parse_mod_detail(html: &str) -> ModDetail {
 
 /// Label/Wert-Paare einer `mods.html`-Zeile einlesen: jedes `div.col-lg-hidden` trägt ein
 /// `<b>Label</b>`, das Geschwister mit Klasse `col-lg-12` (im selben Elternelement) den Wert.
-fn row_columns(
-    row: ElementRef,
-    label_sel: &Selector,
-) -> std::collections::HashMap<String, String> {
+fn row_columns(row: ElementRef, label_sel: &Selector) -> std::collections::HashMap<String, String> {
     let mut cols = std::collections::HashMap::new();
     for label_div in row.select(label_sel) {
         let label = label_div.text().collect::<String>().trim().to_string();
@@ -537,7 +537,10 @@ mod tests {
 
     /// Testhilfe: wie [`parse_mods_page_indexed`], nur ohne die `mod_index`-Begleitinfo.
     fn parse_mods_page(html: &str) -> Vec<crate::model::ServerMod> {
-        parse_mods_page_indexed(html).into_iter().map(|m| m.info).collect()
+        parse_mods_page_indexed(html)
+            .into_iter()
+            .map(|m| m.info)
+            .collect()
     }
 
     // Eine inaktive Mod (Löschknopf `deleteinactive`) auf `mods.html`, Rest gekürzt.
@@ -620,11 +623,18 @@ mod tests {
     #[test]
     fn mods_html_liest_status_und_vollen_dateinamen_vom_loeschknopf() {
         let mods = parse_mods_page(MODS_PAGE_HTML);
-        assert_eq!(mods.len(), 1, "Katalogzeile ohne Filename-Spalte muss übersprungen werden");
+        assert_eq!(
+            mods.len(),
+            1,
+            "Katalogzeile ohne Filename-Spalte muss übersprungen werden"
+        );
         let m = &mods[0];
         assert_eq!(m.file_name, "FS25_DashboardLive_VanillaVehicles.zip");
         assert_eq!(m.status, ModStatus::Inactive);
-        assert_eq!(m.display_name.as_deref(), Some("Dashboard Live Vanilla Vehicles"));
+        assert_eq!(
+            m.display_name.as_deref(),
+            Some("Dashboard Live Vanilla Vehicles")
+        );
         assert_eq!(m.version.as_deref(), Some("1.0.0.0"));
         assert_eq!(m.author.as_deref(), Some("Mister_mojo_AT, ..."));
         assert_eq!(m.size, Some((393.37 * 1024.0 * 1024.0) as u64));
@@ -722,7 +732,10 @@ mod tests {
                 issues: vec!["Erstes Problem".to_string(), "Zweites Problem".to_string()],
             },
         );
-        assert_eq!(m.display_name.as_deref(), Some("Gekürzter Name, ausgeschrieben"));
+        assert_eq!(
+            m.display_name.as_deref(),
+            Some("Gekürzter Name, ausgeschrieben")
+        );
         assert_eq!(m.author.as_deref(), Some("Autor A, Autor B, Autor C"));
         // Dateiname war NICHT gekürzt → bleibt unverändert, auch wenn die Detailseite einen
         // anderen Wert liefert (schützt vor Vertauschung bei falschem mod_index).
@@ -748,7 +761,10 @@ mod tests {
             <tr><td><b>Active</b></td><td>No&nbsp;(<a href="index.html?lang=en#mods">» Mods can be activated in <b>HOME</b></a>)</td></tr>
           </tbody></table></div>"#;
         let detail = parse_mod_detail(html);
-        assert_eq!(detail.display_name.as_deref(), Some("Dashboard Live Vanilla Vehicles"));
+        assert_eq!(
+            detail.display_name.as_deref(),
+            Some("Dashboard Live Vanilla Vehicles")
+        );
         assert_eq!(
             detail.author.as_deref(),
             Some("Mister_mojo_AT, SbSh, Glowins Modschmiede")

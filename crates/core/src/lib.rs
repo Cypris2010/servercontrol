@@ -159,11 +159,17 @@ impl ServerControl {
     }
 
     /// Wie [`Self::upload_mod`], meldet aber laufend den Fortschritt (`progress`-Events, Kap. 7.3).
-    pub async fn upload_mod_with_progress<F>(&self, path: &std::path::Path, on_progress: F) -> Result<()>
+    pub async fn upload_mod_with_progress<F>(
+        &self,
+        path: &std::path::Path,
+        on_progress: F,
+    ) -> Result<()>
     where
         F: Fn(Progress) + Send + Sync + 'static,
     {
-        self.session.upload_mod_with_progress(path, on_progress).await
+        self.session
+            .upload_mod_with_progress(path, on_progress)
+            .await
     }
 
     /// Mod löschen — nur bei **gestopptem** Server (sonst `Error::ServerRunning`).

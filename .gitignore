@@ -20,6 +20,10 @@ Thumbs.db
 # Zugangsdaten gehören NIEMALS ins Repo (Q1) — nur in den OS-Credential-Store.
 *.secret
 credentials.*
+# ...aber das gleichnamige Rust-Modul (Credential-Store-Zugriff) ist Quellcode, kein Secret —
+# ohne diese Ausnahme fehlte crates/core/src/credentials.rs seit dem ersten Commit im Repo und
+# jeder frische Checkout (z. B. CI) brach mit "file not found for module `credentials`".
+!crates/core/src/credentials.rs
 
 # Lokale FTP/SFTP-Testinfrastruktur (tools/test-ftp-sftp) — Uploads und generierte Testkeys.
 tools/test-ftp-sftp/data/mods/*

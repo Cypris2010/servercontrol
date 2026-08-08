@@ -68,6 +68,9 @@ mod tests {
 
     #[test]
     fn leeres_version_tag_none() {
-        assert_eq!(extract_version("<modDesc><version></version></modDesc>"), None);
+        assert_eq!(
+            extract_version("<modDesc><version></version></modDesc>"),
+            None
+        );
     }
 }
