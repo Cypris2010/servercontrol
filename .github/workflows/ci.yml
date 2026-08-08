@@ -18,6 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # `keyring` (Credential-Store-Zugriff) linkt unter Linux gegen System-D-Bus, das der
+      # Runner nicht vorinstalliert hat — sonst bricht schon der reine `cargo build`.
+      - name: Install Linux build deps (libdbus for keyring)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
       - run: cargo build --workspace --verbose
       - run: cargo test --workspace --verbose
 
@@ -29,5 +34,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - name: Install Linux build deps (libdbus for keyring)
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
