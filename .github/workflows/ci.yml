@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    tags-ignore:
+      - "**" # Tag-Pushes laufen ueber release.yml (baut ohnehin/testet die Tauri-App selbst).
   pull_request:
 
 env:
