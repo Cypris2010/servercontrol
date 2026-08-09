@@ -33,6 +33,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
+      # Cargo-Registry + target/ zwischen Laeufen cachen (Key aus Cargo.lock) -- ohne das
+      # kompiliert jeder Lauf alle ~150 Abhaengigkeiten von null neu (live beobachtet: ~15 Min).
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       # Tauri v2 braucht unter Linux WebKitGTK/AppIndicator/rsvg zum Bauen, `keyring`
       # (Credential-Store-Zugriff) zusaetzlich libdbus (siehe ci.yml).
       - name: Install Linux build deps
@@ -49,8 +55,10 @@ jobs:
             libdbus-1-dev \
             pkg-config
 
+      # Fertige Binary statt Quellcode-Kompilierung (die allein schon mehrere Minuten kostet).
+      - uses: taiki-e/install-action@cargo-binstall
       - name: Install tauri-cli
-        run: cargo install tauri-cli --version "^2" --locked
+        run: cargo binstall tauri-cli --version "^2" --no-confirm
 
       - name: Build app
         run: cargo tauri build
