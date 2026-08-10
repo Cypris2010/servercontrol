@@ -203,22 +203,23 @@ fn is_truncated(s: &str) -> bool {
     s.ends_with('…') || s.ends_with("...")
 }
 
-/// Muss für diese Mod die Detailseite nachgeladen werden — Name, Autor **oder** Dateiname
-/// gekürzt, **oder** es gibt Issues (deren Volltext nur dort steht, `mods.html` hat nur die
-/// Anzahl)? Ein einziger Treffer reicht — die Detailseite liefert ohnehin alle Felder **und**
+/// Muss für diese Mod die Detailseite nachgeladen werden — Name, Autor, Dateiname **oder**
+/// Version gekürzt, **oder** es gibt Issues (deren Volltext nur dort steht, `mods.html` hat nur
+/// die Anzahl)? Ein einziger Treffer reicht — die Detailseite liefert ohnehin alle Felder **und**
 /// die Issues-Liste auf einmal, es wird also **pro Mod höchstens ein** zusätzlicher Request
 /// gebraucht, nicht einer pro gekürztem Feld oder extra für die Issues.
 pub(crate) fn needs_detail(m: &ServerMod) -> bool {
     m.display_name.as_deref().is_some_and(is_truncated)
         || m.author.as_deref().is_some_and(is_truncated)
+        || m.version.as_deref().is_some_and(is_truncated)
         || is_truncated(&m.file_name)
         || m.issue_count > 0
 }
 
 /// Ungekürzte Felder und Issues-Liste von der Detailseite ([`parse_mod_detail`]) übernehmen —
-/// bei Name/Autor/Dateiname **nur**, wenn sie tatsächlich gekürzt waren; alles andere (Status,
-/// Größe, `update_available`, `from_modhub`, …) bleibt von `mods.html` unverändert, da nur dort
-/// verlässlich (Kap. 10.5). Issues werden übernommen, sobald welche gefunden wurden.
+/// bei Name/Autor/Dateiname/Version **nur**, wenn sie tatsächlich gekürzt waren; alles andere
+/// (Status, Größe, `update_available`, `from_modhub`, …) bleibt von `mods.html` unverändert, da
+/// nur dort verlässlich (Kap. 10.5). Issues werden übernommen, sobald welche gefunden wurden.
 pub(crate) fn apply_detail(m: &mut ServerMod, detail: ModDetail) {
     if m.display_name.as_deref().is_some_and(is_truncated) {
         if let Some(v) = detail.display_name {
@@ -228,6 +229,11 @@ pub(crate) fn apply_detail(m: &mut ServerMod, detail: ModDetail) {
     if m.author.as_deref().is_some_and(is_truncated) {
         if let Some(v) = detail.author {
             m.author = Some(v);
+        }
+    }
+    if m.version.as_deref().is_some_and(is_truncated) {
+        if let Some(v) = detail.version {
+            m.version = Some(v);
         }
     }
     if is_truncated(&m.file_name) {
@@ -246,6 +252,7 @@ pub(crate) fn apply_detail(m: &mut ServerMod, detail: ModDetail) {
 pub(crate) struct ModDetail {
     pub(crate) display_name: Option<String>,
     pub(crate) author: Option<String>,
+    pub(crate) version: Option<String>,
     pub(crate) file_name: Option<String>,
     pub(crate) issues: Vec<String>,
 }
@@ -300,6 +307,7 @@ pub(crate) fn parse_mod_detail(html: &str) -> ModDetail {
     ModDetail {
         display_name: fields.get("Name").cloned().and_then(non_empty),
         author: fields.get("Author").cloned().and_then(non_empty),
+        version: fields.get("Version").cloned().and_then(non_empty),
         file_name: fields.get("Filename").cloned().and_then(non_empty),
         issues,
     }
@@ -706,6 +714,10 @@ mod tests {
         assert!(!needs_detail(&m));
         m.issue_count = 3;
         assert!(needs_detail(&m)); // Issues vorhanden → Volltext nur auf der Detailseite
+        m.issue_count = 0;
+        assert!(!needs_detail(&m));
+        m.version = Some("1.2.3.4-Ultimate-...".to_string());
+        assert!(needs_detail(&m)); // Version gekürzt
     }
 
     #[test]
@@ -728,6 +740,7 @@ mod tests {
             ModDetail {
                 display_name: Some("Gekürzter Name, ausgeschrieben".to_string()),
                 author: Some("Autor A, Autor B, Autor C".to_string()),
+                version: Some("9.9.9.9".to_string()), // Version war nicht gekürzt → wird ignoriert
                 file_name: Some("FS25_ANDERER_Name.zip".to_string()),
                 issues: vec!["Erstes Problem".to_string(), "Zweites Problem".to_string()],
             },
@@ -737,6 +750,8 @@ mod tests {
             Some("Gekürzter Name, ausgeschrieben")
         );
         assert_eq!(m.author.as_deref(), Some("Autor A, Autor B, Autor C"));
+        // Version war NICHT gekürzt → bleibt unverändert, wie beim Dateinamen.
+        assert_eq!(m.version.as_deref(), Some("1.0.0.0"));
         // Dateiname war NICHT gekürzt → bleibt unverändert, auch wenn die Detailseite einen
         // anderen Wert liefert (schützt vor Vertauschung bei falschem mod_index).
         assert_eq!(m.file_name, "FS25_Voller_Name.zip");
@@ -745,6 +760,34 @@ mod tests {
         assert_eq!(m.size, Some(1024));
         assert_eq!(m.status, ModStatus::Active);
         assert!(m.from_modhub);
+    }
+
+    #[test]
+    fn gekuerzte_version_wird_von_der_detailseite_ersetzt() {
+        let mut m = ServerMod {
+            file_name: "FS25_a.zip".to_string(),
+            display_name: Some("Name".to_string()),
+            version: Some("1.2.3.4-Ultimate-...".to_string()),
+            author: Some("Autor".to_string()),
+            size: None,
+            is_dlc: false,
+            status: ModStatus::Active,
+            update_available: false,
+            from_modhub: false,
+            issue_count: 0,
+            issues: Vec::new(),
+        };
+        apply_detail(
+            &mut m,
+            ModDetail {
+                display_name: None,
+                author: None,
+                version: Some("1.2.3.4-Ultimate-Edition".to_string()),
+                file_name: None,
+                issues: Vec::new(),
+            },
+        );
+        assert_eq!(m.version.as_deref(), Some("1.2.3.4-Ultimate-Edition"));
     }
 
     #[test]
@@ -769,6 +812,7 @@ mod tests {
             detail.author.as_deref(),
             Some("Mister_mojo_AT, SbSh, Glowins Modschmiede")
         );
+        assert_eq!(detail.version.as_deref(), Some("1.0.0.0"));
         assert_eq!(
             detail.file_name.as_deref(),
             Some("FS25_DashboardLive_VanillaVehicles.zip")
