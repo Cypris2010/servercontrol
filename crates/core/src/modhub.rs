@@ -68,6 +68,10 @@ fn parse_search_results(html: &str) -> Result<Vec<CatalogEntry>> {
     if cards.is_empty() && !html.contains("mod-search-input") {
         // Weder Treffer noch die Suchmaske selbst gefunden → Seite nicht wie erwartet
         // aufgebaut (GIANTS-Layoutänderung), nicht stillschweigend „keine Treffer" melden.
+        log::warn!(
+            "ModHub-Suchseite nicht erkannt, HTML-Anfang: {}",
+            crate::session::html_excerpt(html)
+        );
         return Err(Error::Parse(
             "ModHub-Suchseite nicht erkannt (Layout geändert?)".to_string(),
         ));
@@ -132,6 +136,10 @@ pub(crate) fn parse_category(html: &str) -> Result<Vec<ModhubCategoryEntry>> {
     let doc = Html::parse_document(html);
     let select_sel = Selector::parse("select#selectCategory").unwrap();
     if doc.select(&select_sel).next().is_none() {
+        log::warn!(
+            "ModHub-Kategorieseite nicht erkannt, HTML-Anfang: {}",
+            crate::session::html_excerpt(html)
+        );
         return Err(Error::Parse(
             "ModHub-Kategorieseite nicht erkannt (Server läuft oder Layout geändert?)".to_string(),
         ));
@@ -183,6 +191,10 @@ fn parse_details(html: &str, mod_id: u64) -> Result<CatalogDetails> {
         .next()
         .map(|e| e.text().collect::<String>().trim().to_string())
         .ok_or_else(|| {
+            log::warn!(
+                "ModHub-Detailseite nicht erkannt, HTML-Anfang: {}",
+                crate::session::html_excerpt(html)
+            );
             Error::Parse("ModHub-Detailseite nicht erkannt (Layout geändert?)".to_string())
         })?;
 
@@ -248,6 +260,7 @@ fn rating_from_text(text: &str) -> Option<f32> {
 }
 
 fn map_reqwest(e: reqwest::Error) -> Error {
+    log::warn!("HTTP-Fehler bei {:?}: {e}", e.url());
     if e.is_connect() || e.is_timeout() {
         Error::Unreachable
     } else {

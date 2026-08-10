@@ -3885,6 +3885,7 @@ dependencies = [
  "directories",
  "futures-util",
  "keyring",
+ "log",
  "reqwest 0.12.28",
  "scraper",
  "serde",

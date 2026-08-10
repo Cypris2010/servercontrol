@@ -2032,6 +2032,7 @@ dependencies = [
  "directories",
  "futures-util",
  "keyring",
+ "log",
  "reqwest",
  "scraper",
  "serde",

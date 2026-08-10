@@ -9,6 +9,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
 url = { version = "2", features = ["serde"] }
+# Rohe Fehlerdetails (reqwest-Fehlerursache, HTML-Ausschnitte bei Parse-Fehlern) landen nur im
+# Log, nie in der kurzen Nutzer-Meldung aus error.rs — die GUI hängt das App-seitig ein Sink ein.
+log = "0.4"
 
 # HTTP-Sitzung mit Cookie-Speicher; rustls statt OpenSSL (plattformarm, Q5).
 # multipart für den Mod-Upload (modUpload-Formular).

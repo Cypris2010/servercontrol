@@ -715,13 +715,18 @@ pub fn run() {
         // Fenstergröße/-position merken und beim nächsten Start wiederherstellen.
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
+            // Auch im Release-Build ins Log-Verzeichnis schreiben (nicht nur im Debug-Build wie
+            // bisher) — sonst gibt es bei einem gemeldeten Problem (z. B. „Server nicht
+            // erreichbar") nichts, was man sich nachträglich ansehen könnte. Im Debug-Build
+            // zusätzlich auf stdout, für die Entwicklung.
+            use tauri_plugin_log::{Target, TargetKind};
+            let mut builder = tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Info)
+                .target(Target::new(TargetKind::LogDir { file_name: None }));
             if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
+                builder = builder.target(Target::new(TargetKind::Stdout));
             }
+            app.handle().plugin(builder.build())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

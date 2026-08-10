@@ -766,7 +766,13 @@ fn parse_state(html: &str) -> Result<ServerState> {
         .select(&sel)
         .next()
         .and_then(|e| e.value().attr("class"))
-        .ok_or_else(|| Error::Parse("status-indicator nicht gefunden".to_string()))?;
+        .ok_or_else(|| {
+            log::warn!(
+                "status-indicator nicht gefunden, HTML-Anfang: {}",
+                html_excerpt(html)
+            );
+            Error::Parse("status-indicator nicht gefunden".to_string())
+        })?;
     let has = |name: &str| class.split_whitespace().any(|c| c == name);
     if has("online") {
         Ok(ServerState::Online {
@@ -775,10 +781,22 @@ fn parse_state(html: &str) -> Result<ServerState> {
     } else if has("offline") {
         Ok(ServerState::Offline)
     } else {
+        log::warn!("status-indicator ohne online/offline, class=\"{class}\"");
         Err(Error::Parse(
             "status-indicator ohne online/offline".to_string(),
         ))
     }
+}
+
+/// Kurzer HTML-Ausschnitt fürs Log bei Parse-Fehlern — lang genug, um eine Layoutänderung zu
+/// erkennen, kurz genug, um das Log nicht mit ganzen Seiten zuzumüllen.
+pub(crate) fn html_excerpt(html: &str) -> String {
+    let end = html
+        .char_indices()
+        .nth(400)
+        .map(|(i, _)| i)
+        .unwrap_or(html.len());
+    html[..end].replace(['\n', '\r'], " ")
 }
 
 /// Spielversion aus der eingeloggten Home-Seite: die „Game"-Zeile trägt z. B.
@@ -842,6 +860,10 @@ fn form_action(html: &str, form_name: &str) -> Option<String> {
 /// reqwest-Fehler auf unsere Fehlerfälle abbilden: Verbindungs-/Zeitfehler → `Unreachable`,
 /// alles andere → `Network` (mit Grund, aber ohne Zugangsdaten).
 fn map_reqwest(e: reqwest::Error) -> Error {
+    // `Unreachable`/`Network` tragen bewusst nur eine kurze, übersetzte Meldung (Kap. 7.11) —
+    // die eigentliche reqwest-Ursache (DNS, TLS, Timeout, Verbindung abgelehnt, …) geht dabei
+    // sonst spurlos verloren. Für die Fehlersuche unverändert ins Log, nicht in den Fehlerwert.
+    log::warn!("HTTP-Fehler bei {:?}: {e}", e.url());
     if e.is_connect() || e.is_timeout() {
         Error::Unreachable
     } else {
