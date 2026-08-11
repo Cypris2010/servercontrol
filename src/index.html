@@ -9,7 +9,11 @@
   <body>
     <!-- Statusleiste (7.1): Serverwahl · Steuerung · Status -->
     <header class="statusbar">
-      <div class="brand">🚜 Server Control</div>
+      <div class="brand">
+        <!-- Icons: Tabler Icons (MIT, © 2020–2026 Paweł Kuna) — https://tabler.io/icons; siehe mockups/ICON-CREDITS.md -->
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M7 15l0 .01"/><path d="M17 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M10.5 17l6.5 0"/><path d="M20 15.2v-4.2a1 1 0 0 0 -1 -1h-6l-2 -5h-6v6.5"/><path d="M18 5h-1a1 1 0 0 0 -1 1v4"/></svg>
+        Server Control
+      </div>
       <div class="server-wrap" id="server-wrap">
         <button
           class="server-pick"
@@ -19,32 +23,60 @@
         >
           <span id="pick-dot" class="dot"></span>
           <span id="server-name" class="server-name">— nicht verbunden —</span>
-          <span class="chev">▾</span>
+          <span class="chev"><svg class="ic ic-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6l6 -6"/></svg></span>
         </button>
         <div class="server-menu" id="server-menu" role="menu" hidden>
           <div id="server-menu-list"></div>
-          <button class="menu-item" id="menu-manage" role="menuitem">Server verwalten…</button>
+          <button class="menu-item" id="menu-manage" role="menuitem">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v2a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-2"/><path d="M12 20h-6a3 3 0 0 1 -3 -3v-2a3 3 0 0 1 3 -3h10.5"/><path d="M16 18a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M18 14.5v1.5"/><path d="M18 20v1.5"/><path d="M21.032 16.25l-1.299 .75"/><path d="M16.27 19l-1.3 .75"/><path d="M14.97 16.25l1.3 .75"/><path d="M19.733 19l1.3 .75"/><path d="M7 8v.01"/><path d="M7 16v.01"/></svg>
+            Server verwalten…
+          </button>
           <button class="menu-item danger" id="menu-disconnect" role="menuitem" hidden>
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2"/><path d="M9 12h12l-3 -3"/><path d="M18 15l3 -3"/></svg>
             Verbindung trennen
           </button>
         </div>
       </div>
       <div class="status-area">
         <span id="status-badge" class="badge badge-off">nicht verbunden</span>
-        <button id="btn-start" class="ghost small" hidden>Starten</button>
-        <button id="btn-restart" class="ghost small" hidden>Neu starten</button>
-        <button id="btn-stop" class="ghost danger small" hidden>Stoppen</button>
+        <button id="btn-start" class="ghost small" hidden>
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16l13 -8l-13 -8"/></svg>
+          <span class="btn-label">Starten</span>
+        </button>
+        <button id="btn-restart" class="ghost small" hidden>
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.05 11a8 8 0 1 1 .5 4m-.5 5v-5h5"/></svg>
+          <span class="btn-label">Neu starten</span>
+        </button>
+        <button id="btn-stop" class="ghost danger small" hidden>
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2l0 -10"/></svg>
+          <span class="btn-label">Stoppen</span>
+        </button>
       </div>
     </header>
 
     <div class="app">
       <!-- Seitenleiste (G2–G6) -->
       <nav class="sidebar">
-        <button class="nav-item active" data-view="overview">Übersicht</button>
-        <button class="nav-item" data-view="mods">Mods</button>
-        <button class="nav-item" data-view="deploy">Bereitstellen</button>
-        <button class="nav-item" data-view="settings">Spieleinstellungen</button>
-        <button class="nav-item" data-view="log" disabled>Log</button>
+        <button class="nav-item active" data-view="overview">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v8h-6z"/><path d="M4 16h6v4h-6z"/><path d="M14 12h6v8h-6z"/><path d="M14 4h6v4h-6z"/></svg>
+          Übersicht
+        </button>
+        <button class="nav-item" data-view="mods">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3a1 1 0 0 0 1 -1v-1a2 2 0 0 1 4 0v1a1 1 0 0 0 1 1h3a1 1 0 0 1 1 1v3a1 1 0 0 0 1 1h1a2 2 0 0 1 0 4h-1a1 1 0 0 0 -1 1v3a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1v-1a2 2 0 0 0 -4 0v1a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h1a2 2 0 0 0 0 -4h-1a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1"/></svg>
+          Mods
+        </button>
+        <button class="nav-item" data-view="deploy">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 9l5 -5l5 5"/><path d="M12 4l0 12"/></svg>
+          Bereitstellen
+        </button>
+        <button class="nav-item" data-view="settings">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg>
+          Spieleinstellungen
+        </button>
+        <button class="nav-item" data-view="log" disabled>
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2"/><path d="M9 9l1 0"/><path d="M9 13l6 0"/><path d="M9 17l6 0"/></svg>
+          Log
+        </button>
       </nav>
 
       <!-- Arbeitsbereich -->
@@ -60,7 +92,7 @@
         <section id="overview-view" class="view" hidden>
           <div class="toolbar">
             <h1>Übersicht</h1>
-            <button id="btn-refresh" class="ghost">Aktualisieren</button>
+            <button id="btn-refresh" class="ghost"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg>Aktualisieren</button>
           </div>
           <div class="cards">
             <div class="card">
@@ -85,10 +117,10 @@
           <div class="toolbar">
             <h1>Mods</h1>
             <div id="mods-counts" class="counts"></div>
-            <button id="btn-mods-refresh" class="ghost">Aktualisieren</button>
+            <button id="btn-mods-refresh" class="ghost"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg>Aktualisieren</button>
           </div>
           <div id="mods-banner" class="banner" hidden>
-            <span
+            <svg class="ic ic-banner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/></svg><span
               ><b>Server läuft.</b> Mods lassen sich nur bei gestopptem Server aktivieren,
               deaktivieren oder löschen — die Liste bleibt sichtbar und durchsuchbar. Zum Ändern
               erst stoppen.</span
@@ -97,6 +129,7 @@
 
           <div class="mods-toolbar">
             <div class="search">
+              <svg class="ic ic-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
               <input id="mods-search" type="search" placeholder="Suchen nach Name oder Dateiname…" />
             </div>
             <div class="filters" id="mods-filters" role="group" aria-label="Nach Status filtern">
@@ -136,10 +169,10 @@
         <section id="settings-view" class="view" hidden>
           <div class="toolbar">
             <h1>Spieleinstellungen</h1>
-            <button id="btn-settings-refresh" class="ghost">Aktualisieren</button>
+            <button id="btn-settings-refresh" class="ghost"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg>Aktualisieren</button>
           </div>
           <div id="settings-banner" class="banner" hidden>
-            <span
+            <svg class="ic ic-banner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/></svg><span
               ><b>Server läuft.</b> Nur lesbar — zum Ändern erst stoppen.</span
             >
           </div>
@@ -270,8 +303,14 @@
             </p>
 
             <div class="card2 upload-card">
-              <button type="button" id="btn-pick-file" class="ghost">Datei(en) auswählen…</button>
-              <button type="button" id="btn-pick-folder" class="ghost">Ordner auswählen…</button>
+              <button type="button" id="btn-pick-file" class="ghost">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 9l5 -5l5 5"/><path d="M12 4l0 12"/></svg>
+                Datei(en) auswählen…
+              </button>
+              <button type="button" id="btn-pick-folder" class="ghost">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l3 3h7a1 1 0 0 1 1 1v8a2 2 0 0 1 -2 2H6a2 2 0 0 1 -2 -2V6a2 2 0 0 1 2 -2z"/></svg>
+                Ordner auswählen…
+              </button>
               <div id="upload-file-name" class="hint-inline">keine Datei gewählt</div>
             </div>
 
@@ -299,7 +338,10 @@
 
             <div class="card2 modhub-search-card">
               <input type="text" id="modhub-query" class="inp" placeholder="Mod-Name suchen…" />
-              <button type="button" id="btn-modhub-search" class="ghost">Suchen</button>
+              <button type="button" id="btn-modhub-search" class="ghost">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/></svg>
+                Suchen
+              </button>
             </div>
 
             <div class="card2 modhub-search-card">
@@ -344,7 +386,10 @@
       <div class="manage">
         <header class="manage-top">
           <h2>Server verwalten</h2>
-          <button id="manage-close" class="ghost small" title="Schließen">Schließen</button>
+          <button id="manage-close" class="ghost small" title="Schließen">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></svg>
+            Schließen
+          </button>
         </header>
         <div class="manage-body">
           <aside class="plist">

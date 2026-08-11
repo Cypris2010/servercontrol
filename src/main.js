@@ -1171,8 +1171,11 @@ async function refreshAfterControlAction(overview) {
 async function runControlAction(btn, command, busyLabel) {
   const buttons = [$("btn-start"), $("btn-restart"), $("btn-stop")];
   buttons.forEach((b) => (b.disabled = true));
-  const original = btn.textContent;
-  btn.textContent = busyLabel;
+  // Nur das Label-Span austauschen, nicht btn.textContent — sonst reißt das die Icon-<svg>
+  // (Geschwisterelement) aus dem Button raus, und sie kommt beim Zurücksetzen nicht wieder.
+  const label = btn.querySelector(".btn-label");
+  const original = label.textContent;
+  label.textContent = busyLabel;
   try {
     const overview = await invoke(command);
     await refreshAfterControlAction(overview);
@@ -1180,7 +1183,7 @@ async function runControlAction(btn, command, busyLabel) {
     alert("Aktion fehlgeschlagen: " + e);
   } finally {
     buttons.forEach((b) => (b.disabled = false));
-    btn.textContent = original;
+    label.textContent = original;
   }
 }
 

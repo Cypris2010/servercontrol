@@ -33,6 +33,26 @@ body {
   flex-direction: column;
 }
 
+/* Icons (Tabler Icons, MIT — siehe mockups/ICON-CREDITS.md): als Text-Präfix in Buttons/Labels,
+   daher `inline-flex` mit `gap` statt Text-Margin auf den umschließenden Elementen. Wirkt sich
+   auf Buttons ohne Icon nicht sichtbar aus (ein einzelnes Kind ignoriert `gap`). */
+.ic { width: 15px; height: 15px; flex: none; }
+.ghost, .primary-btn, .nav-item, .brand, .menu-item, .banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* `display: inline-flex` oben hat dieselbe Selektor-Spezifität wie das UA-Stylesheet-`[hidden]
+   { display: none }` — Autor-Regeln gewinnen bei Gleichstand, also blieben z. B. Start/Neu
+   starten/Stoppen immer sichtbar statt je nach Serverzustand ein-/auszublenden. Höhere
+   Spezifität (Klasse + Attribut) stellt das `hidden`-Verhalten wieder her. */
+.ghost[hidden], .primary-btn[hidden], .nav-item[hidden], .brand[hidden],
+.menu-item[hidden], .banner[hidden] {
+  display: none;
+}
+.ic-chev { width: 13px; height: 13px; }
+.ic-banner { color: var(--ink-soft); }
+
 /* Statusleiste */
 .statusbar {
   display: flex;
@@ -153,10 +173,11 @@ button:disabled { opacity: 0.6; cursor: default; }
   font-size: 13px;
 }
 .mods-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
-.search { flex: 1; max-width: 360px; }
+.search { flex: 1; max-width: 360px; position: relative; }
+.ic-search { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--ink-soft); pointer-events: none; }
 .search input {
   width: 100%;
-  padding: 8px 12px;
+  padding: 8px 12px 8px 34px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
