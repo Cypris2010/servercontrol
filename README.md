@@ -2,10 +2,53 @@
 
 Werkzeug zur **Fernsteuerung eines FS25-Dedicated-Servers über dessen Weboberfläche** —
 Mods lesen/aktivieren, Server starten/stoppen, Mods hochladen (Web bis 1,71 GB, darüber
-FTP/SFTP) und ModHub-Downloads anstoßen.
+FTP/SFTP), einen lokalen Mod-Ordner mit dem Server abgleichen (nur neuere Versionen
+aktualisieren) und Mods direkt aus dem ModHub auf dem Server installieren.
 
-> **Status: Gerüst / Entwurf 0.1.** Konzept steht (Lasten-/Pflichtenheft, GUI-Mockup),
-> die Umsetzung beginnt. Die Bibliotheks-Operationen sind noch Stubs (`todo!()`).
+> **Status: funktionsfähig.** Login, Mod-Verwaltung (inkl. ModHub-Download), Server-
+> Steuerung und Spieleinstellungen sind umgesetzt.
+
+## Installieren
+
+Fertige Installer (macOS/Linux/Windows) gibt es unter
+[Releases](https://github.com/Cypris2010/servercontrol/releases) — kein Rust/Tauri nötig.
+
+## Benutzung
+
+1. **Serverprofil anlegen**: beim ersten Start (oder über den Server-Wähler oben links →
+   „Server verwalten…") ein neues Profil mit Adresse (`host:port/index.html`), Benutzername
+   und Web-Passwort des Panels anlegen. Das Passwort landet ausschließlich im
+   OS-Schlüsselbund, nie in einer Datei der App.
+2. **Verbinden**: das Profil im Server-Wähler auswählen. Der Status-Punkt daneben zeigt
+   Grün/Grau, ob eine Verbindung besteht; Starten/Stoppen/Neu starten stehen direkt daneben.
+3. **Übersicht**: Zustand, Spielversion und Mod-Zahlen auf einen Blick.
+4. **Mods**: installierte Mods durchsuchen, einzeln oder per Mehrfachauswahl aktivieren/
+   deaktivieren/löschen. Aktivieren/Deaktivieren/Löschen geht nur bei **gestopptem** Server.
+5. **Bereitstellen**: neue Mods per Datei- oder Ordnerauswahl hochladen (bis 1,71 GB). Bei der
+   Ordnerauswahl lässt sich der komplette lokale Mod-Ordner mit dem Server abgleichen: die App
+   vergleicht jede Datei mit dem Serverstand und kann wahlweise alles hochladen/überschreiben
+   oder gezielt nur die Mods aktualisieren, von denen lokal eine neuere Version vorliegt.
+   Alternativ direkt im offiziellen ModHub nach Mods suchen oder nach Kategorie stöbern (z. B.
+   „Update", „Neueste", „Beste") und einen Treffer ohne manuellen Download direkt auf den
+   Server installieren — Hochladen wie ModHub-Installation setzen einen gestoppten Server
+   voraus.
+6. **Spieleinstellungen**: Spielname, Passwörter, Karte, Wirtschaft, Spielerzahl usw. bearbeiten
+   (nur bei gestopptem Server als Formular; im laufenden Betrieb read-only als Übersicht).
+
+## Bauen (Entwicklung)
+
+```sh
+cargo build            # Workspace (core + cli)
+cargo run -p servercontrol-cli
+
+# GUI (Tauri) — braucht die Tauri-CLI (cargo install tauri-cli --version "^2"):
+cargo tauri dev        # aus dem Repo-Wurzelverzeichnis
+```
+
+## Technik
+
+Rust-Workspace; geplante GUI unter Tauri (Rust-Kern + Web-Oberfläche). Zugangsdaten liegen
+ausschließlich im OS-Credential-Store (`keyring`), **nie** im Repo oder in Logs.
 
 ## Aufbau
 
@@ -34,22 +77,7 @@ GUI-Mockup unter `mockups/` dient als visuelle Vorlage fürs Frontend.
 - [Pflichtenheft](docs/Pflichtenheft-ServerControl.md) — das *Wie* (Technik, API, GUI-Spec)
 - [GUI-Mockup](mockups/servercontrol-mockup.html) — interaktiv, mit Beispieldaten
 
-## Bauen
-
-```sh
-cargo build            # Workspace (core + cli)
-cargo run -p servercontrol-cli
-
-# GUI (Tauri) — braucht die Tauri-CLI (cargo install tauri-cli --version "^2"):
-cargo tauri dev        # aus dem Repo-Wurzelverzeichnis
-```
-
-## Technik
-
-Rust-Workspace; geplante GUI unter Tauri (Rust-Kern + Web-Oberfläche). Zugangsdaten liegen
-ausschließlich im OS-Credential-Store (`keyring`), **nie** im Repo oder in Logs.
-
 ## Lizenzen Dritter
 
-- Icons: [Tabler Icons](https://tabler.io/icons) (MIT) — siehe
-  [`mockups/ICON-CREDITS.md`](mockups/ICON-CREDITS.md).
+- Icons im GUI-Mockup (`mockups/`, nicht in der eigentlichen App): [Tabler Icons](https://tabler.io/icons)
+  (MIT) — siehe [`mockups/ICON-CREDITS.md`](mockups/ICON-CREDITS.md).
