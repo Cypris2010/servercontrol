@@ -31,6 +31,12 @@ pub mod catalog {
     /// Namenssuche: `GET mods.php?title=fs2025&searchMod=<query>`. Der erste Treffer wäre
     /// „FEATURED MOD"-Werbung — die liegt strukturell außerhalb von `div.mod-item` und taucht
     /// hier daher gar nicht erst auf (kein manuelles Verwerfen nötig).
+    ///
+    /// Version/Dateiname stehen auf dieser Seite nicht drin (siehe [`CatalogEntry`]) — pro
+    /// Treffer wird deshalb zusätzlich die Detailseite geladen, parallel statt nacheinander
+    /// (die Suchergebnisseite selbst ist ohnehin nicht paginiert, bleibt also überschaubar
+    /// viele Treffer). Schlägt das für einen einzelnen Treffer fehl, bleibt dessen
+    /// Version/Dateiname einfach leer statt die ganze Suche abzubrechen.
     pub async fn search(query: &str) -> Result<Vec<CatalogEntry>> {
         let resp = client()
             .get(format!("{MODHUB_HOST}/mods.php"))
@@ -39,7 +45,23 @@ pub mod catalog {
             .await
             .map_err(map_reqwest)?;
         let html = resp.text().await.map_err(map_reqwest)?;
-        parse_search_results(&html)
+        let mut entries = parse_search_results(&html)?;
+
+        let details =
+            futures_util::future::join_all(entries.iter().map(|e| details(e.mod_id))).await;
+        for (entry, detail) in entries.iter_mut().zip(details) {
+            match detail {
+                Ok(d) => {
+                    entry.version = d.version;
+                    entry.file_name = d.file_name;
+                }
+                Err(e) => log::warn!(
+                    "ModHub-Detailseite für mod_id {} fehlgeschlagen: {e}",
+                    entry.mod_id
+                ),
+            }
+        }
+        Ok(entries)
     }
 
     /// Detailseite: `GET mod.php?mod_id=<id>&title=fs2025` — Version, Dateiname, Beschreibung.
@@ -117,6 +139,8 @@ fn parse_search_results(html: &str) -> Result<Vec<CatalogEntry>> {
             author,
             rating,
             thumb_url,
+            version: None,
+            file_name: None,
         });
     }
     Ok(entries)

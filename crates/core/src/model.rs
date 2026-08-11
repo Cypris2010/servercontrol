@@ -244,6 +244,11 @@ pub struct Progress {
 
 /// Ein Treffer der ModHub-Namenssuche (Weg B, Kap. 4.4 / 10.2 LH) — genug, um eine Trefferkarte
 /// zu zeigen und „Auf Server installieren" auszulösen (`mod_id` = `startmoddownload`-Kennung).
+///
+/// `version`/`file_name` stehen auf der Suchergebnisseite selbst nicht drin (nur auf der
+/// Detailseite des einzelnen Mods) — `catalog::search` lädt sie deshalb pro Treffer nach, damit
+/// die GUI Version und „schon installiert?" genauso anzeigen kann wie beim Kategorie-Browsen
+/// ([`ModhubCategoryEntry`], die der Server direkt mitliefert).
 #[derive(Debug, Clone, Serialize)]
 pub struct CatalogEntry {
     pub mod_id: u64,
@@ -251,6 +256,8 @@ pub struct CatalogEntry {
     pub author: Option<String>,
     pub rating: Option<f32>,
     pub thumb_url: Option<String>,
+    pub version: Option<String>,
+    pub file_name: Option<String>,
 }
 
 /// Ein Eintrag der **serverseitigen** ModHub-Kategorieseite (Pflichtenheft 10.1) — der Server

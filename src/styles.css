@@ -172,7 +172,7 @@ button:disabled { opacity: 0.6; cursor: default; }
   margin: 12px 0;
   font-size: 13px;
 }
-.mods-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+.mods-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .search { flex: 1; max-width: 360px; position: relative; }
 .ic-search { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--ink-soft); pointer-events: none; }
 .search input {
@@ -195,6 +195,18 @@ button:disabled { opacity: 0.6; cursor: default; }
 }
 .filters button:last-child { border-right: 0; }
 .filters button.on { background: var(--accent); color: var(--accent-ink); }
+
+/* Eigenständiger An/Aus-Filter (z. B. "DLC") statt einer sich gegenseitig ausschließenden
+   Gruppe wie `.filters` — gleiche Optik, aber nur ein Button, kein Rahmen um mehrere. */
+.filter-toggle {
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink-soft);
+  font: inherit;
+}
+.filter-toggle.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
 .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
 /* `min-width: 100%` + `width: max-content`, nicht `width: 100%`: die Tabelle darf über die
@@ -557,4 +569,5 @@ button.small { padding: 4px 10px; font-size: 12px; }
 .modhub-card-status.done { color: var(--green); }
 .modhub-card-status.failed { color: var(--red); }
 .modhub-card .progress-wrap { margin-top: 6px; }
+.modhub-card-actions { display: flex; gap: 8px; flex: none; }
 .modhub-install-btn { flex-shrink: 0; white-space: nowrap; }

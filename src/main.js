@@ -27,7 +27,9 @@ async function withBusy(button, fn, busyLabel) {
 const modsState = {
   all: [], // ServerMod[] wie von mods_view geliefert
   online: false,
-  filter: "all",
+  filter: "all", // Status: Alle/Aktiv/Inaktiv — schließen sich gegenseitig aus
+  dlcOnly: false, // DLC: eigenständiger An/Aus-Schalter, nicht exklusiv zu den anderen beiden
+  hub: "all", // Herkunft: Alle/ModHub/Lokal — schließen sich untereinander aus, aber nicht mit Status/DLC
   query: "",
   sortKey: "name",
   sortDir: "asc",
@@ -36,6 +38,10 @@ const modsState = {
 
 const STATUS_LABEL = { Active: "Aktiv", Inactive: "Inaktiv", Orphan: "Karteileiche" };
 const STATUS_CLASS = { Active: "active", Inactive: "inactive", Orphan: "orphan" };
+// `data-f`-Werte der Filter-Buttons (index.html) sind klein geschrieben, `m.status` kommt
+// dagegen groß aus dem Backend ("Active"/"Inactive") — ohne diese Abbildung verglich
+// modsVisible() die beiden nie gleich, die Filter-Buttons wirkten also nie.
+const FILTER_STATUS = { active: "Active", inactive: "Inactive" };
 const STATUS_ORDER = { Active: 0, Inactive: 1, Orphan: 2 };
 
 function fmtSize(bytes) {
@@ -70,7 +76,10 @@ function confirmDialog(title, body, okLabel, danger) {
 function modsVisible() {
   const q = modsState.query;
   let list = modsState.all.filter((m) => {
-    if (modsState.filter !== "all" && m.status !== modsState.filter) return false;
+    if (modsState.filter !== "all" && m.status !== FILTER_STATUS[modsState.filter]) return false;
+    if (modsState.dlcOnly && !m.is_dlc) return false;
+    if (modsState.hub === "modhub" && !m.from_modhub) return false;
+    if (modsState.hub === "local" && m.from_modhub) return false;
     if (!q) return true;
     const name = (m.display_name || "").toLowerCase();
     return name.includes(q) || m.file_name.toLowerCase().includes(q);
@@ -244,6 +253,19 @@ function initModsView() {
     const b = e.target.closest("button");
     if (!b) return;
     modsState.filter = b.dataset.f;
+    [...e.currentTarget.children].forEach((c) => c.classList.toggle("on", c === b));
+    renderMods();
+  });
+  $("mods-filter-dlc").addEventListener("click", (e) => {
+    modsState.dlcOnly = !modsState.dlcOnly;
+    e.currentTarget.classList.toggle("on", modsState.dlcOnly);
+    e.currentTarget.setAttribute("aria-pressed", String(modsState.dlcOnly));
+    renderMods();
+  });
+  $("mods-filters-hub").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    modsState.hub = b.dataset.f;
     [...e.currentTarget.children].forEach((c) => c.classList.toggle("on", c === b));
     renderMods();
   });
@@ -716,6 +738,11 @@ function initDeployView() {
   });
   $("btn-modhub-browse").addEventListener("click", runModhubBrowse);
   $("modhub-results").addEventListener("click", (e) => {
+    const linkBtn = e.target.closest(".modhub-link-btn");
+    if (linkBtn) {
+      window.__TAURI__.opener.openUrl(modhubUrl(Number(linkBtn.dataset.modId)));
+      return;
+    }
     const btn = e.target.closest(".modhub-install-btn");
     if (!btn) return;
     const modId = Number(btn.dataset.modId);
@@ -759,10 +786,35 @@ function modhubResultHtml(entry, installedVersion) {
       </div>
       <div class="modhub-card-status" id="modhub-status-${entry.mod_id}"></div>
     </div>
-    <button type="button" class="ghost small modhub-install-btn" data-mod-id="${entry.mod_id}" ${installDisabled}>
-      Auf Server installieren
-    </button>
+    <div class="modhub-card-actions">
+      <button type="button" class="ghost small modhub-link-btn" data-mod-id="${entry.mod_id}">
+        Auf ModHub ansehen
+      </button>
+      <button type="button" class="ghost small modhub-install-btn" data-mod-id="${entry.mod_id}" ${installDisabled}>
+        Auf Server installieren
+      </button>
+    </div>
   </div>`;
+}
+
+// Öffentliche ModHub-Detailseite eines Mods — dieselbe URL, die `catalog::details` in der
+// Bibliothek abfragt (siehe modhub.rs), hier nur zum Anzeigen im System-Browser statt zum Parsen.
+function modhubUrl(modId) {
+  return `https://www.farming-simulator.com/mod.php?mod_id=${modId}&title=fs2025`;
+}
+
+// Installierte Version je Dateiname — Basis für den "Installiert: X → Neu: Y"-Abgleich, sowohl
+// bei der Suche als auch beim Kategorie-Browsen. Best effort: schlägt `mods_view` fehl (z. B.
+// nicht verbunden), bleibt der Abgleich einfach weg statt Suche/Browsen abzubrechen.
+async function installedVersionsByFile() {
+  try {
+    const modsView = await invoke("mods_view");
+    const byFile = {};
+    modsView.mods.forEach((m) => (byFile[m.file_name] = m.version));
+    return byFile;
+  } catch {
+    return null;
+  }
 }
 
 async function runModhubSearch() {
@@ -778,7 +830,18 @@ async function runModhubSearch() {
       $("modhub-results").innerHTML = `<p class="hint-inline">Keine Treffer.</p>`;
       return;
     }
-    $("modhub-results").innerHTML = entries.map(modhubResultHtml).join("");
+    entries.forEach((e) => {
+      if (e.file_name) modhubFileNames[e.mod_id] = e.file_name;
+    });
+    const installedByFile = await installedVersionsByFile();
+    $("modhub-results").innerHTML = entries
+      .map((e) =>
+        modhubResultHtml(
+          e,
+          e.file_name && installedByFile ? installedByFile[e.file_name] : undefined,
+        ),
+      )
+      .join("");
   } catch (e) {
     $("modhub-results").innerHTML = "";
     err.textContent = "Suche fehlgeschlagen: " + e;
@@ -804,12 +867,8 @@ async function runModhubBrowse() {
       $("modhub-results").innerHTML = `<p class="hint-inline">Keine Einträge in dieser Kategorie.</p>`;
       return;
     }
-    let installedByFile = null;
-    if (category === MODHUB_UPDATE_CATEGORY) {
-      const modsView = await invoke("mods_view");
-      installedByFile = {};
-      modsView.mods.forEach((m) => (installedByFile[m.file_name] = m.version));
-    }
+    const installedByFile =
+      category === MODHUB_UPDATE_CATEGORY ? await installedVersionsByFile() : null;
     $("modhub-results").innerHTML = entries
       .map((e) => modhubResultHtml(e, installedByFile ? installedByFile[e.file_name] : undefined))
       .join("");

@@ -712,6 +712,9 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState::default())
         .plugin(tauri_plugin_dialog::init())
+        // "Auf ModHub ansehen"-Link bei Suche/Kategorie-Browsen: öffnet im System-Browser statt
+        // (unbrauchbar) im App-Fenster selbst.
+        .plugin(tauri_plugin_opener::init())
         // Fenstergröße/-position merken und beim nächsten Start wiederherstellen.
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
