@@ -3,10 +3,11 @@
 Werkzeug zur **Fernsteuerung eines FS25-Dedicated-Servers über dessen Weboberfläche** —
 Mods lesen/aktivieren, Server starten/stoppen, Mods hochladen (Web bis 1,71 GB, darüber
 FTP/SFTP), einen lokalen Mod-Ordner mit dem Server abgleichen (nur neuere Versionen
-aktualisieren) und Mods direkt aus dem ModHub auf dem Server installieren.
+aktualisieren), Mods direkt aus dem ModHub auf dem Server installieren sowie Savegames
+verwalten (herunterladen, hochladen, löschen, aus Backup wiederherstellen).
 
 > **Status: funktionsfähig.** Login, Mod-Verwaltung (inkl. ModHub-Download), Server-
-> Steuerung und Spieleinstellungen sind umgesetzt.
+> Steuerung, Spieleinstellungen und Savegame-Verwaltung sind umgesetzt.
 
 ## Installieren
 
@@ -34,6 +35,11 @@ Fertige Installer (macOS/Linux/Windows) gibt es unter
    voraus.
 6. **Spieleinstellungen**: Spielname, Passwörter, Karte, Wirtschaft, Spielerzahl usw. bearbeiten
    (nur bei gestopptem Server als Formular; im laufenden Betrieb read-only als Übersicht).
+7. **Savegames**: belegte Slots einsehen, herunterladen oder löschen; ein Savegame in einen
+   belegten oder leeren Slot hochladen; ein automatisch angelegtes Zeitstempel-Backup eines
+   Slots wiederherstellen. Läuft — anders als der Mod-Upload — bei laufendem **und**
+   gestopptem Server; nur das gerade geladene Savegame lässt sich weder löschen noch
+   überschreiben.
 
 ## Bauen (Entwicklung)
 
@@ -56,7 +62,7 @@ Die **Bibliothek ist der einzige Ort mit Logik**; CLI und (spätere) GUI sind d�
 
 ```
 servercontrol/
-├─ crates/core/    servercontrol-core — die Bibliothek (Sitzung, Mods, Steuerung,
+├─ crates/core/    servercontrol-core — die Bibliothek (Sitzung, Mods, Savegames, Steuerung,
 │                  Einstellungen, Log, ModHub, Verifikation)
 ├─ cli/            servercontrol-cli — dünnes Binary auf der Crate
 ├─ src-tauri/      servercontrol-gui — Tauri-App (dünne Command-Schicht, eigener Workspace)
