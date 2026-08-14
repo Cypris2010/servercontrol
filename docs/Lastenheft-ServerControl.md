@@ -48,7 +48,12 @@ deshalb nicht in den ModMatcher-Kern.
 - **SZ4** Mehrere Server-Profile verwalten.
 
 ### 1.3 Kann-Ziele
-- Savegames hoch-/herunterladen und auswählen (über FTP/SFTP)
+- **Savegames hoch-/herunterladen, auswählen, löschen und aus Backup wiederherstellen** — läuft,
+  wie bei Mods, primär über das **native Web-Formular** der Server-Oberfläche
+  (`savegames.html`, Kap. 7.8), **nicht** über FTP/SFTP: Download ist ein einfacher HTTP-Link je
+  Slot, Upload ein `multipart/form-data`-POST. FTP/SFTP wäre nur nötig, falls eine
+  Savegame-ZIP-Datei die 1,71-GB-Grenze (Kap. 7.3) überschreitet — bei Savegames praxisfern,
+  aber vom selben Mechanismus wie bei Mods (F5) mitabgedeckt.
 - Allgemeiner Dateizugriff auf den Serverordner über FTP/SFTP (Dateien ablegen/lesen/holen) —
   trägt später auch die Mod-Sets
 - Server-Einstellungen ändern (Name, Passwörter, Slots, Karte)
@@ -241,6 +246,23 @@ trägt Q3: Sie ist der Ort, an dem sich Erfolg **nachweisen** lässt.
 - **Feldwerte prüfen** vor dem Absenden (erwartete Auswahlwerte/Zahlenbereiche); bei Abweichung
   klar melden statt blind posten (Q4).
 
+**G7 Savegame-Verwaltung (Kann-Ziel, siehe 1.3) — eigene Ansicht, an das Original angelehnt.**
+Die Hersteller-Oberfläche bündelt auf `savegames.html` drei Aufgaben untereinander auf einer
+Seite (Kap. 7.8); die GUI übernimmt diese Dreiteilung, trennt sie aber in **eigene Reiter**
+innerhalb des Menüpunkts „Savegames" statt sie untereinander zu stapeln:
+
+- **Reiter „Manage Savegames"** — Tabelle der belegten Slots: Slot-Name, Map, Geld, Spielzeit,
+  Schwierigkeit; je Zeile **Download** (löst den direkten HTTP-Link aus) und **Löschen**
+  (bestätigungspflichtig, Q2).
+- **Reiter „Upload Savegame"** — Ziel-Slot wählen (belegt oder leer), optional eigener Name,
+  ZIP-Datei hochladen, mit Fortschrittsanzeige und Hinweis auf die 1,71-GB-Grenze (analog G3).
+- **Reiter „Restore Savegame Backup"** — Dropdown der automatisch angelegten Zeitstempel-Backups
+  je Slot; deutlicher Hinweis, dass der Slot dabei überschrieben wird (Q2, bestätigungspflichtig).
+
+Gemeinsame Voraussetzung wie bei G2/G6: Aktionen, die den Serverzustand verändern, respektieren
+den gestoppt/laufend-Unterschied, sofern die Weboberfläche das erzwingt (am lebenden Server zu
+verifizieren, Kap. 7.8).
+
 > **Nicht im Anfangsumfang: geführter Assistent „Mod-Satz herstellen" (F8).** Der F8-Ablauf
 > wird zunächst **von Hand** über Mod-Übersicht (G2), Bereitstellung (G3) und Steuerung (G4)
 > erledigt — die Bausteine sind vorhanden. Ein geführter Assistent, der die Schritte selbst
@@ -422,6 +444,7 @@ Spalte `gds_mods.filename`. Keine ID-Zuordnung nötig.
 | Mods | `modUpload` · `startmoddownload` · `cancelmoddownload` · `mod_access_level` |
 | Einstellungen | `game_name` · `game_password` · `admin_password` · `server_port` · `map_start` · `savegame` · `crossplay_allowed` · `auto_save_interval` · `stats_interval` · `mp_language` · `save_settings` |
 | Dateien | `upload` · `file` · `content_hash` |
+| Savegames | `index_upload` · `custom_name` · `backup_restore` · `delete_<Slot>` (Kap. 7.8) |
 | Logs | `log_type` · `log_file` · `show_log` · `delete_log` · `log_access_level` |
 | Benutzer/Journal | `realname` · `password` · `game_admin` · `is_active` · `journal_content` · `save_journal` · `new_journal_entry` |
 
@@ -518,6 +541,75 @@ mit verifizierten Bausteinen gedeckt — **ohne** einen datenaufwendigen lokalen
 > ⚠️ **Vorbehalt:** Die ModHub-Website bietet **kein offizielles API** — die Antwort ist
 > gerendertes HTML, das geparst werden muss. Ändert GIANTS das Layout, muss der Parser nach
 > (dieselbe Versionstoleranz wie bei der Server-Oberfläche, SZ1/Q4).
+
+### 7.8 Savegames verwalten (am lebenden Server verifiziert)
+
+Eigene Seite `savegames.html`, am angemeldeten Testserver (`ccc222`) untersucht. Anders als
+zunächst angenommen läuft der Up-/Download **nicht** über FTP/SFTP, sondern über dasselbe
+Web-Formular-Muster wie bei Mods (Kap. 7.3). Die Seite gliedert sich in drei Bereiche:
+
+**Übersicht der belegten Slots** — Tabelle mit Slot-Name, Map, Geld, Spielzeit, Schwierigkeit.
+
+**Download — einfacher HTTP-Link, kein Formular:**
+```html
+<a href="savegame1">Download My game save (1)</a>
+<a href="savegame2">Download My game save (2)</a>
+```
+Pfad ist schlicht `savegame<Slot-Index>` (1–20) relativ zur Seite — GET, kein Login-Overhead
+über das bereits bestehende Session-Cookie hinaus.
+
+**Löschen — ebenfalls ein einfacher Link:**
+```html
+<a href="savegames.html?delete_1=true&lang=en">Delete My game save (1)</a>
+```
+→ `savegames.html?delete_<Slot-Index>=true`.
+
+**Upload:**
+```html
+<form method="post" action="savegames.html?lang=en#upload">
+  <select name="index_upload"> <!-- Werte 1..20, belegte und leere Slots gemischt --> </select>
+  <input type="text" name="custom_name">           <!-- optional -->
+  <input type="file" name="file">                   <!-- ZIP-Pflicht, laut Hinweistext -->
+  <input type="submit" name="upload" value="Upload">
+</form>
+```
+
+**Backup wiederherstellen** — eigenständige Funktion, in der bisherigen Doku nicht erfasst: Der
+Server legt **automatisch Zeitstempel-Backups je belegtem Slot** an (Format `<Slot>_<Datum
+YYYY-MM-DD>_<Zeit HH-MM>`, z. B. `2_2026-07-13_23-56`) und erlaubt, den aktuellen Inhalt des
+Slots damit zu überschreiben:
+```html
+<form method="post" action="savegames.html?lang=en">
+  <select name="backup_restore">
+    <option value="2_2026-07-13_23-56">Savegame 2 (2026-07-13_23-56) - Map: …</option>
+    …
+  </select>
+  <input type="submit" name="upload" value="Restore">
+</form>
+```
+→ `backup_restore=<Slot>_<Zeitstempel>` per POST; **derselbe** Submit-Name `upload` wie beim
+Datei-Upload-Formular, unterschieden nur durch den jeweils mitgesendeten Formularinhalt.
+
+**Einordnung:** Der Mechanismus ist damit dem Mod-Umgang (F5) sehr ähnlich — Web-Formular als
+Standardweg, FTP/SFTP nur als Fallback jenseits der 1,71-GB-Grenze (Kap. 7.3) für den seltenen
+Fall sehr großer Savegame-Archive.
+
+**Verifiziert: Upload/Delete/Restore funktionieren bei laufendem Server.** Anders als die
+Mod-Umschaltung (Kap. 7.3, dort **0** Checkboxen im laufenden Betrieb) sperrt die
+Server-Oberfläche Savegame-Upload, -Löschen und -Backup-Restore **nicht** bei laufendem Server —
+verhält sich also wie `upload_mod` (Kap. 4.3 PH), nicht wie `set_active`/`delete_mod`.
+
+**Ausnahme: das aktuell geladene Savegame selbst.** Nicht der Serverzustand sperrt hier etwas,
+sondern eine **slot-spezifische** Regel — verifiziert an einem laufenden Server mit vier belegten
+Slots (Slot 4 = die gerade geladene Karte):
+- Die Zeile des aktuell geladenen Slots trägt in der Tabelle **keinen Lösch-Link** — alle
+  anderen belegten Slots weiterhin schon, obwohl der Server läuft.
+- Im `index_upload`-Dropdown des Upload-Formulars **fehlt genau dieser Slot komplett** — er lässt
+  sich nicht als Ziel wählen, man kann das laufende Savegame also nicht überschreiben.
+
+Für die Umsetzung folgt daraus: Die Bibliothek darf die Upload-Zieloptionen **nicht** aus der
+Slot-Tabelle synthetisieren (1..20 durchnummeriert) — sie muss die echten `<option>`-Werte des
+Dropdowns lesen, sonst böte die GUI einen Slot an, den der Server ablehnt.
 
 ---
 

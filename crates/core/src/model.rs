@@ -51,6 +51,36 @@ pub struct ServerMod {
     pub issues: Vec<String>,
 }
 
+/// Ein Savegame-Slot aus Sicht des Servers (`savegames.html`, Kap. 7.8 LH). Nur belegte Slots
+/// erscheinen in `list_savegames`; leere Slots sind reine Ziel-Optionen beim Upload.
+#[derive(Debug, Clone, Serialize)]
+pub struct ServerSavegame {
+    /// Slot 1..=20 — Kennung für den Download-Link `savegame<slot>` und `delete_<slot>`.
+    pub slot: u8,
+    pub display_name: String,
+    pub map: String,
+    /// In-Game-Geld, aus „500'000 $" geparst.
+    pub money: u64,
+    pub play_time_minutes: u32,
+    pub difficulty: Difficulty,
+    /// Trägt die Zeile einen Lösch-Link? **Live verifiziert:** Bei laufendem Server fehlt er nur
+    /// beim **aktuell geladenen** Savegame — ein normaler Slot (auch bei laufendem Server) hat
+    /// ihn weiterhin. Ebenso fehlt dieser Slot im `index_upload`-Dropdown des Upload-Formulars
+    /// (Kap. 7.8 LH) — das kann man nicht überschreiben, während es gerade läuft.
+    pub can_delete: bool,
+}
+
+/// Automatisch vom Server angelegtes Zeitstempel-Backup eines Slots (Kap. 7.8 LH). `timestamp`
+/// ist der Formularwert-Teil nach dem Slot (z. B. `"2026-07-13_23-56"`) — zusammen mit `slot`
+/// ergibt das `backup_restore=<slot>_<timestamp>`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavegameBackup {
+    pub slot: u8,
+    pub timestamp: String,
+    pub map: String,
+    pub play_time_minutes: u32,
+}
+
 /// Spiel-Einstellungen = Felder des `configuration`-Formulars (Kap. 6.1),
 /// Wertebereiche am Server verifiziert.
 #[derive(Debug, Clone)]
@@ -96,6 +126,17 @@ impl Difficulty {
             "1" => Some(Self::Easy),
             "2" => Some(Self::Normal),
             "3" => Some(Self::Hard),
+            _ => None,
+        }
+    }
+
+    /// Aus dem Anzeigetext auf `savegames.html` ("Easy"/"Normal"/"Hard", Kap. 7.8 LH) —
+    /// anders als [`Self::from_code`], das den numerischen Formularwert liest.
+    pub(crate) fn from_label(label: &str) -> Option<Self> {
+        match label.trim() {
+            "Easy" => Some(Self::Easy),
+            "Normal" => Some(Self::Normal),
+            "Hard" => Some(Self::Hard),
             _ => None,
         }
     }

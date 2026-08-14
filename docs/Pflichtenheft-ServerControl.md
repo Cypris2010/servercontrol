@@ -180,6 +180,31 @@ pub struct ServerMod {
     pub status: ModStatus,
 }
 
+/// Ein Savegame-Slot aus Sicht des Servers (`savegames.html`, Kap. 7.8 LH). Nur belegte Slots
+/// erscheinen in `list_savegames`; leere Slots sind reine Ziel-Optionen beim Upload
+/// (`list_savegame_upload_slots`, s. u.).
+pub struct ServerSavegame {
+    pub slot: u8,                // 1..=20, Kennung für Download-Link `savegame<slot>` und delete_<slot>
+    pub display_name: String,    // "My game save (1)"
+    pub map: String,
+    pub money: u64,
+    pub play_time_minutes: u32,
+    pub difficulty: Difficulty,
+    /// Trägt die Zeile einen Lösch-Link? Live verifiziert: fehlt **nur** beim aktuell geladenen
+    /// Savegame — ein normaler Slot hat ihn auch bei laufendem Server (Kap. 7.8 LH).
+    pub can_delete: bool,
+}
+
+/// Automatisch vom Server angelegtes Zeitstempel-Backup eines Slots (Kap. 7.8 LH), Kennung
+/// im Format `<slot>_<YYYY-MM-DD>_<HH-MM>` — genau der Wert, der als `backup_restore` gesendet
+/// wird. Wiederherstellen überschreibt den Slot vollständig.
+pub struct SavegameBackup {
+    pub slot: u8,
+    pub timestamp: String,       // z. B. "2026-07-13_23-56", unverändert als Formularwert genutzt
+    pub map: String,
+    pub play_time_minutes: u32,
+}
+
 /// Spiel-Einstellungen = Felder des `configuration`-Formulars (Kap. 6.1), Wertebereiche am
 /// Server verifiziert. Genutzt von `read_settings`/`save_settings` (G6, Kann).
 pub struct GameSettings {
@@ -221,7 +246,8 @@ verletzen. Kandidaten: `secrecy` (`SecretString`) bzw. `zeroize`.
 ### 4.3 Die Operationen (Entwurf)
 
 > **Vertrag der eingreifenden Operationen:** `start`/`stop`/`restart` sowie `set_active`,
-> `upload_mod`, `delete_mod` und `modhub_download` **verifizieren selbst** (Kap. 9). Sie geben
+> `upload_mod`, `delete_mod`, `modhub_download`, `upload_savegame`, `delete_savegame` und
+> `restore_savegame_backup` **verifizieren selbst** (Kap. 9). Sie geben
 > `Ok` erst bei **nachgewiesenem** Ergebnis zurück, bei Zeitüberschreitung `NotProven`, bei
 > Abbruch `Cancelled`; Fortschritt/Warten melden sie über `ctx`. Der Aufrufer muss nicht
 > selbst nachprüfen. `await_log` ist dabei nur der **interne Baustein** für den ergänzenden
@@ -248,7 +274,31 @@ impl ServerControl {
     /// GESTOPPTEM Server (online 0 Lösch-Buttons, verifiziert) → sonst `ServerRunning`.
     pub async fn delete_mod(&self, file_name: &str) -> Result<()>;
 
-    // --- Dateizugriff über FTP/SFTP (MZ4; Savegames/allg. Zugriff = Kann, Lastenheft 1.3) ---
+    // --- Savegames (Kann, Kap. 1.3 LH / Kap. 7.8 LH) — natives Web-Formular, wie bei Mods ---
+    pub async fn list_savegames(&self) -> Result<Vec<ServerSavegame>>;
+    /// Die echten `index_upload`-Dropdown-Optionen (belegte Slots + „SAVEGAME n" für leere) —
+    /// **nicht** aus `list_savegames` synthetisiert: Das aktuell geladene Savegame fehlt darin
+    /// live verifiziert, lässt sich aber nicht aus der Slot-Liste allein ableiten (die zeigt nur
+    /// `can_delete = false`, nicht „fehlt im Upload-Dropdown").
+    pub async fn list_savegame_upload_slots(&self) -> Result<Vec<FieldOption>>;
+    /// GET `savegame<slot>` — einfacher Datei-Download, kein Formular-Umlauf nötig.
+    pub async fn download_savegame(&self, slot: u8, local: &Path, ctx: &OpCtx) -> Result<()>;
+    /// Wählt wie `upload_mod` automatisch den Weg: Web-Formular (`index_upload`+`file`) bis
+    /// 1,71 GB, **darüber FTP/SFTP** (MZ4) sofern `file_access` konfiguriert, sonst
+    /// `NoFileAccess`. `slot` = Zielslot (belegt oder leer, aus `list_savegame_upload_slots`),
+    /// `name` = optionaler `custom_name`. Geht in **beiden** Zuständen (verifiziert, wie
+    /// `upload_mod` — **nicht** wie `set_active`).
+    pub async fn upload_savegame(&self, slot: u8, name: Option<&str>, path: &Path, ctx: &OpCtx) -> Result<()>;
+    /// `savegames.html?delete_<slot>=true`. Geht in **beiden** Zuständen (verifiziert) — **außer**
+    /// beim aktuell geladenen Savegame (`ServerSavegame.can_delete = false`), das lässt sich
+    /// grundsätzlich nicht löschen, unabhängig vom Serverzustand.
+    pub async fn delete_savegame(&self, slot: u8, ctx: &OpCtx) -> Result<()>;
+    pub async fn list_savegame_backups(&self, slot: u8) -> Result<Vec<SavegameBackup>>;
+    /// `backup_restore=<slot>_<timestamp>` — überschreibt den Slot, daher bestätigungspflichtig
+    /// in der GUI (Q2, G7). Geht in **beiden** Zuständen (verifiziert).
+    pub async fn restore_savegame_backup(&self, backup: &SavegameBackup, ctx: &OpCtx) -> Result<()>;
+
+    // --- Allgemeiner Dateizugriff über FTP/SFTP (MZ4; Kann, Lastenheft 1.3) ---
     pub async fn put_file(&self, local: &Path, remote: &str, ctx: &OpCtx) -> Result<()>;
     pub async fn get_file(&self, remote: &str, local: &Path, ctx: &OpCtx) -> Result<()>;
     pub async fn list_dir(&self, remote: &str) -> Result<Vec<RemoteEntry>>;
@@ -421,7 +471,7 @@ ab. Der kostete in der Umsetzung viel Fehlersuche — daher hier festgehalten:
 
 ---
 
-## 7. GUI-Spezifikation (G1–G6)
+## 7. GUI-Spezifikation (G1–G7)
 
 Web-Oberfläche unter Tauri. Dieser Abschnitt legt Aufbau, Zustände, Sperr-Logik,
 Bestätigungen und das Event-Schema fest.
@@ -467,13 +517,16 @@ Eine **Seitenleiste** mit den Ansichten, oben eine **globale Statusleiste**:
 │  Mods      │            aktive Ansicht                   │
 │  Bereit-   │                                             │
 │   stellen  │                                             │
+│  Savegames │                                             │
 │  Log       │                                             │
 └────────────┴─────────────────────────────────────────────┘
 ```
 
-**Getrennte Ansichten** (Grundsatz 4.1 LH): Spieleinstellungen, Mod-Übersicht, Bereitstellen und
-Log sind **eigene** Seitenleisten-Ansichten — bewusst **nicht** die Ein-Seiten-Struktur des
-Herstellers. Die **Serversteuerung** (Starten/Stoppen/Neustart) sitzt dagegen in der
+**Getrennte Ansichten** (Grundsatz 4.1 LH): Spieleinstellungen, Mod-Übersicht, Bereitstellen,
+Savegames und Log sind **eigene** Seitenleisten-Ansichten — bewusst **nicht** die
+Ein-Seiten-Struktur des Herstellers (die Savegames selbst zwar schon als eigene Seite
+`savegames.html` führt, aber die drei Teilaufgaben darauf untereinander stapelt statt in Reiter
+zu trennen, Kap. 7.8 LH). Die **Serversteuerung** (Starten/Stoppen/Neustart) sitzt dagegen in der
 **Statusleiste** neben dem Zustand (7.7), nicht als eigener Menüpunkt. Die Statusleiste
 (Serverwahl + Zustand + Steuerung) ist immer sichtbar (G1).
 
@@ -648,12 +701,50 @@ Umsetzung aus Kap. 4.1 LH (G6):
   gesperrt — genau wie der Server (`checkSavegame()`, Kap. 6).
 - Vor `save_settings` **Feldwerte prüfen** (Wertebereiche) → sonst klare Meldung (Q4).
 
+### 7.9a G7 — Savegames (Kann, Kap. 1.3 LH / 7.8 LH)
+
+Eigener Menüpunkt **„Savegames"**, an das Original angelehnt (drei Aufgaben, Kap. 7.8 LH), aber
+statt untereinander gestapelt in **drei Reiter** getrennt — gleiches Muster wie G3 (7.6):
+
+1. **Reiter „Manage Savegames"**
+   - **Tabelle** der belegten Slots (`list_savegames`): Slot-Name · Map · Geld · Spielzeit ·
+     Schwierigkeit.
+   - Je Zeile **„Herunterladen"** → `download_savegame` (Dateiauswahl-Dialog für den Zielpfad,
+     Fortschritt über `ctx`).
+   - Je Zeile **„Löschen"** → `delete_savegame` — **destruktiv** → Bestätigung (7.10). **Fehlt
+     beim aktuell geladenen Savegame** (live verifiziert: dessen Zeile trägt server­seitig keinen
+     Lösch-Link — `ServerSavegame.can_delete = false`); die GUI zeigt dort statt des Knopfs einen
+     Hinweis („aktiv") statt eine Aktion anzubieten, die ohnehin fehlschlagen würde.
+2. **Reiter „Upload Savegame"**
+   - **Ziel-Slot-Auswahl** (Dropdown) — **die echten Optionen des `index_upload`-Formulars**
+     (`list_savegame_upload_slots`), **nicht** synthetisch 1..20 nachgebaut: belegte Slots mit
+     ihrem Anzeigenamen, leere als „SAVEGAME n", **ohne** das aktuell geladene Savegame — live
+     verifiziert, dass genau dieser Slot im Original-Dropdown fehlt (man kann ihn nicht
+     überschreiben, während er läuft). Dazu optionaler **Name** (`custom_name`), **Datei-Upload**
+     (ZIP) → `upload_savegame` mit Fortschrittsbalken.
+   - Wie bei G3: Das Tool **wählt den Weg selbst** (bis 1,71 GB Web-Formular, darüber FTP/SFTP,
+     `NoFileAccess` falls kein Zugang hinterlegt, 7.4).
+   - Wird ein **belegter** Slot als Ziel gewählt, weist die GUI vor dem Absenden darauf hin, dass
+     der bestehende Spielstand **überschrieben** wird — analog zur Restore-Warnung unten.
+3. **Reiter „Restore Savegame Backup"**
+   - **Slot wählen**, dann **Dropdown der Zeitstempel-Backups** dieses Slots (`list_savegame_backups`)
+     mit Map/Spielzeit zur Orientierung (wie im Original-Formulartext).
+   - **„Wiederherstellen"** → `restore_savegame_backup` — **überschreibt den Slot** →
+     **Bestätigung** (7.10) mit explizitem Hinweis „Der aktuelle Spielstand in diesem Slot geht
+     verloren."
+
+**Keine Sperre bei laufendem Server.** Anders als G2 (Aktivierung/Löschen) und G6 (Speichern)
+bleiben alle drei Reiter **immer** bedienbar — verifiziert am lebenden Server: Upload, Löschen
+und Backup-Restore funktionieren unabhängig vom Serverzustand, genau wie `upload_mod` (7.6).
+Kein „zum Ändern erst stoppen"-Banner in G7.
+
 ### 7.10 Bestätigungen bei eingreifenden Aktionen
 
 Ein einheitlicher Bestätigungsdialog für: **Stoppen/Neustart, Aktivierungsänderungen, Start,
-Mod löschen** (Q2). Er nennt die konkrete Folge („Der Server wird gestoppt — verbundene
-Mitspieler fliegen heraus." bzw. „Die Mod-Datei wird vom Server gelöscht.") und verlangt aktive
-Zustimmung. Harmlose Aktionen (Suche, Log lesen, Sortieren)
+Mod löschen, Savegame löschen, Savegame-Backup wiederherstellen** (Q2). Er nennt die konkrete
+Folge („Der Server wird gestoppt — verbundene Mitspieler fliegen heraus." bzw. „Die Mod-Datei
+wird vom Server gelöscht." bzw. „Der aktuelle Spielstand in diesem Slot geht verloren.") und
+verlangt aktive Zustimmung. Harmlose Aktionen (Suche, Log lesen, Sortieren, Herunterladen)
 brauchen keine.
 
 ### 7.11 Fehleranzeige
@@ -886,7 +977,7 @@ Website-Suche + Detailseite · Beispiel-Logzeilen (Erfolg **und** Fehler).
 
 Alle für den Entwurf 0.1 vorgesehenen Kapitel sind ausgearbeitet:
 
-- [x] **GUI-Spezifikation G1–G6** (Kap. 7)
+- [x] **GUI-Spezifikation G1–G7** (Kap. 7; G7 Savegames = Kann-Ziel, Kap. 7.9a)
 - [x] **Profil-/Datenhaltung** (Kap. 8)
 - [x] **Ergebnis-Verifikation** — Zustand primär, Log für Gründe (Kap. 9)
 - [x] **ModHub-Parser** — stabile Anker, zwei Hosts, Sprache fixiert (Kap. 10)

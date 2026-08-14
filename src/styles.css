@@ -221,6 +221,7 @@ th.sorted { color: var(--ink); }
 .arrow { margin-left: 4px; font-size: 10px; }
 .c-file { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .c-del { text-align: right; }
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
 .badge-active { background: color-mix(in srgb, var(--green) 20%, transparent); color: var(--green); padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .badge-inactive { background: color-mix(in srgb, var(--grey) 20%, transparent); color: var(--grey); padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
@@ -455,6 +456,7 @@ button.small { padding: 4px 10px; font-size: 12px; }
 .switchrow { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 400; }
 
 .editor-foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.editor-foot-top { margin-top: 0; margin-bottom: 16px; }
 .grow { flex: 1; }
 
 /* Spieleinstellungen (G6) */

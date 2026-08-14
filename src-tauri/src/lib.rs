@@ -4,8 +4,9 @@
 
 use serde::{Deserialize, Serialize};
 use servercontrol_core::{
-    catalog, CatalogEntry, Difficulty, GameSettings, ModStatus, OpCtx, PauseIfEmpty, ProfileId,
-    ServerControl, ServerMod, ServerProfile, ServerState, SettingsOptions, SettingsRow,
+    catalog, CatalogEntry, Difficulty, FieldOption, GameSettings, ModStatus, OpCtx, PauseIfEmpty,
+    ProfileId, SavegameBackup, ServerControl, ServerMod, ServerProfile, ServerSavegame,
+    ServerState, SettingsOptions, SettingsRow,
 };
 use tauri::Emitter;
 use tokio::sync::Mutex;
@@ -17,23 +18,44 @@ struct AppState {
     sc: Mutex<Option<(ProfileId, ServerControl)>>,
 }
 
-/// Kompakte Übersicht für die Startseite (Zustand + Mod-Zahlen).
+/// Kompakte Übersicht für die Startseite (Zustand + Mod-/Savegame-Zahlen).
 #[derive(Serialize)]
 struct Overview {
     online: bool,
     version: Option<String>,
+    /// Der In-Game-Servername (`game_name`) — nur bei **laufendem** Server verfügbar: das Panel
+    /// zeigt dort die reine Textanzeige (`read_settings_summary`, Zeile „Server Game Name"), das
+    /// `configuration`-Formular für `read_settings` fehlt dann (Kap. 6.1 PH). Bei gestopptem
+    /// Server bewusst `None` statt eines zweiten Abrufwegs — G6 zeigt den Namen dort ohnehin
+    /// editierbar im Formular.
+    game_name: Option<String>,
     mod_total: usize,
     mod_active: usize,
     mod_inactive: usize,
     mod_dlc: usize,
+    savegame_total: usize,
+    /// Map des aktuell geladenen Savegames, falls eines läuft — erkannt an `can_delete = false`
+    /// (Kap. 7.8 LH: nur das gerade geladene Savegame hat live verifiziert keinen Lösch-Link).
+    savegame_active_map: Option<String>,
 }
 
 async fn build_overview(sc: &ServerControl) -> Result<Overview, String> {
     let state = sc.state().await.map_err(|e| e.to_string())?;
     let mods = sc.list_mods().await.map_err(|e| e.to_string())?;
+    let savegames = sc.list_savegames().await.map_err(|e| e.to_string())?;
     let (online, version) = match state {
         ServerState::Online { version } => (true, version),
         ServerState::Offline => (false, None),
+    };
+    let game_name = if online {
+        sc.read_settings_summary()
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|row| row.label == "Server Game Name")
+            .map(|row| row.value)
+    } else {
+        None
     };
     let active = mods
         .iter()
@@ -43,10 +65,16 @@ async fn build_overview(sc: &ServerControl) -> Result<Overview, String> {
     Ok(Overview {
         online,
         version,
+        game_name,
         mod_total: mods.len(),
         mod_active: active,
         mod_inactive: mods.len() - active,
         mod_dlc: dlc,
+        savegame_total: savegames.len(),
+        savegame_active_map: savegames
+            .iter()
+            .find(|s| !s.can_delete)
+            .map(|s| s.map.clone()),
     })
 }
 
@@ -547,6 +575,139 @@ async fn modhub_browse_category(
         .map_err(|e| e.to_string())
 }
 
+// --- G7: Savegames (Kann-Ziel, Pflichtenheft 7.9a / Kap. 7.8 LH) ---
+//
+// Anders als G2/G6 keine Sperre durch den Serverzustand — Upload/Löschen/Restore funktionieren
+// bei laufendem wie bei gestopptem Server (live verifiziert). `online` wird trotzdem mitgegeben,
+// falls die GUI es für die Anzeige braucht (z. B. Serversteuerung im Kopf).
+
+#[derive(Serialize)]
+struct SavegamesView {
+    online: bool,
+    savegames: Vec<ServerSavegame>,
+    /// Die echten `index_upload`-Dropdown-Optionen (Reiter „Upload Savegame") — fehlt darin das
+    /// aktuell geladene Savegame, live verifiziert (kann nicht überschrieben werden, während es
+    /// läuft). Bewusst **nicht** aus `savegames` synthetisiert, s. `list_savegame_upload_slots`.
+    upload_slots: Vec<FieldOption>,
+}
+
+#[tauri::command]
+async fn savegames_view(state: tauri::State<'_, AppState>) -> Result<SavegamesView, String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    let online = matches!(
+        sc.state().await.map_err(|e| e.to_string())?,
+        ServerState::Online { .. }
+    );
+    let savegames = sc.list_savegames().await.map_err(|e| e.to_string())?;
+    let upload_slots = sc
+        .list_savegame_upload_slots()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(SavegamesView {
+        online,
+        savegames,
+        upload_slots,
+    })
+}
+
+/// Zeitstempel-Backups eines Slots (Reiter „Restore Savegame Backup").
+#[tauri::command]
+async fn list_savegame_backups(
+    state: tauri::State<'_, AppState>,
+    slot: u8,
+) -> Result<Vec<SavegameBackup>, String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    sc.list_savegame_backups(slot)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Savegame herunterladen — `path` kommt vom nativen Speichern-Dialog (Frontend), rein lesend
+/// (kein Bestätigungsdialog nötig).
+#[tauri::command]
+async fn download_savegame(
+    state: tauri::State<'_, AppState>,
+    slot: u8,
+    path: String,
+) -> Result<(), String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    sc.download_savegame(slot, std::path::Path::new(&path))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// `progress`-Event-Payload für einen laufenden Savegame-Upload — eigener Event-Name, damit er
+/// sich nicht mit dem Mod-Upload-Fortschritt (`progress`) vermischt.
+#[derive(Clone, Serialize)]
+struct SavegameUploadProgress {
+    done: u64,
+    total: Option<u64>,
+}
+
+/// Savegame über das Web-Formular hochladen (G7, 7.9a) — bis 1,71 GB, sonst `Error::NoFileAccess`
+/// (FTP/SFTP-Weg noch nicht umgesetzt). `slot` ist ein belegter **oder** leerer Ziel-Slot;
+/// `name` der optionale `custom_name`. Fortschritt gedrosselt wie beim Mod-Upload.
+#[tauri::command]
+async fn upload_savegame(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    slot: u8,
+    name: Option<String>,
+    path: String,
+) -> Result<(), String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+
+    let last_emitted = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let app_handle = app.clone();
+    sc.upload_savegame_with_progress(
+        slot,
+        name.as_deref(),
+        std::path::Path::new(&path),
+        move |p| {
+            let total = p.total.unwrap_or(0);
+            let step = (total / 100).max(262_144);
+            let prev = last_emitted.load(std::sync::atomic::Ordering::Relaxed);
+            if p.done.saturating_sub(prev) >= step || Some(p.done) == p.total {
+                last_emitted.store(p.done, std::sync::atomic::Ordering::Relaxed);
+                let _ = app_handle.emit(
+                    "savegame-progress",
+                    SavegameUploadProgress {
+                        done: p.done,
+                        total: p.total,
+                    },
+                );
+            }
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Savegame löschen (G7, destruktiv).
+#[tauri::command]
+async fn delete_savegame(state: tauri::State<'_, AppState>, slot: u8) -> Result<(), String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    sc.delete_savegame(slot).await.map_err(|e| e.to_string())
+}
+
+/// Zeitstempel-Backup wiederherstellen (G7) — überschreibt den Slot vollständig.
+#[tauri::command]
+async fn restore_savegame_backup(
+    state: tauri::State<'_, AppState>,
+    backup: SavegameBackup,
+) -> Result<(), String> {
+    let guard = state.sc.lock().await;
+    let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
+    sc.restore_savegame_backup(&backup)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // --- G4: Serversteuerung im Kopf (Pflichtenheft 7.7) ---
 //
 // start/stop/restart verifizieren intern selbst (Q3, Kap. 9) und geben erst bei
@@ -756,7 +917,13 @@ pub fn run() {
             modhub_search,
             modhub_install,
             modhub_cancel,
-            modhub_browse_category
+            modhub_browse_category,
+            savegames_view,
+            list_savegame_backups,
+            download_savegame,
+            upload_savegame,
+            delete_savegame,
+            restore_savegame_backup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

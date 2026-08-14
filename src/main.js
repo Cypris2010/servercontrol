@@ -920,6 +920,284 @@ async function installModhubMod(modId, fileName) {
   }
 }
 
+// --- Savegames (G7, Kann-Ziel, Pflichtenheft 7.9a / Kap. 7.8 LH) ---
+// Anders als Mods/Einstellungen keine Sperre durch den Serverzustand — Upload/Löschen/Restore
+// funktionieren bei laufendem wie bei gestopptem Server (verifiziert, wie beim Mod-Upload).
+const savegamesState = {
+  all: [], // ServerSavegame[] wie von savegames_view geliefert
+  uploadPath: null, // vom nativen Datei-Dialog gewählter lokaler Pfad
+  backups: [], // SavegameBackup[] des aktuell gewählten Restore-Slots
+};
+
+function fmtPlayTime(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function fmtMoney(n) {
+  return n.toLocaleString("de-CH") + " $";
+}
+
+// `difficulty` kommt vom Backend als Zahl (Difficulty ist `#[serde(into = "u8")]`, wie bei den
+// Spieleinstellungen) — hier nur zur Anzeige in Text übersetzt.
+const DIFFICULTY_LABEL = { 1: "Easy", 2: "Normal", 3: "Hard" };
+
+function renderSavegamesTable() {
+  const rows = savegamesState.all;
+  $("sg-manage-empty").hidden = rows.length > 0;
+  $("sg-rows").innerHTML = rows
+    .map(
+      (s) => `<tr data-slot="${s.slot}">
+        <td>${escapeHtml(s.display_name)}</td>
+        <td>${escapeHtml(s.map)}</td>
+        <td>${fmtMoney(s.money)}</td>
+        <td>${fmtPlayTime(s.play_time_minutes)}</td>
+        <td>${escapeHtml(DIFFICULTY_LABEL[s.difficulty] || s.difficulty)}</td>
+        <td class="row-actions">
+          <button type="button" class="ghost small btn-sg-download" data-slot="${s.slot}">Herunterladen</button>
+          <button type="button" class="ghost danger small btn-sg-delete" data-slot="${s.slot}" ${s.can_delete ? "" : 'disabled title="Aktuell geladenes Savegame — kann nicht gelöscht werden"'}>Löschen</button>
+        </td>
+      </tr>`,
+    )
+    .join("");
+}
+
+// Ziel-Slot-Auswahl beim Upload: die **echten** `index_upload`-Dropdown-Optionen aus
+// `savegames_view` (`upload_slots`) — nicht 1..20 synthetisch nachgebaut. Wichtig, weil das
+// aktuell geladene Savegame darin fehlt (live verifiziert, kann nicht überschrieben werden,
+// während es läuft) — das lässt sich aus der Slot-Liste allein nicht ableiten.
+function populateUploadSlotOptions(uploadSlots) {
+  const options = uploadSlots.map((o) => ({ value: o.value, label: escapeHtml(o.label) }));
+  populateSelect("sg-upload-slot", options, options[0] ? options[0].value : "");
+}
+
+// Restore-Slot-Auswahl: nur belegte Slots, da nur die Backups haben können.
+function populateRestoreSlotOptions() {
+  const options = savegamesState.all.map((s) => ({
+    value: String(s.slot),
+    label: escapeHtml(s.display_name),
+  }));
+  populateSelect("sg-restore-slot", options, options[0] ? options[0].value : "");
+  loadRestoreBackups();
+}
+
+async function loadSavegames() {
+  const err = $("sg-manage-error");
+  err.hidden = true;
+  try {
+    const view = await withBusy($("btn-sg-refresh"), () => invoke("savegames_view"));
+    savegamesState.all = view.savegames;
+    renderSavegamesTable();
+    populateUploadSlotOptions(view.upload_slots);
+    populateRestoreSlotOptions();
+  } catch (e) {
+    err.textContent = String(e);
+    err.hidden = false;
+  }
+}
+
+async function downloadSavegame(slot) {
+  const err = $("sg-manage-error");
+  err.hidden = true;
+  try {
+    const path = await invoke("plugin:dialog|save", {
+      options: { defaultPath: `savegame${slot}.zip`, filters: [{ name: "Savegame", extensions: ["zip"] }] },
+    });
+    if (!path) return;
+    await invoke("download_savegame", { slot, path });
+  } catch (e) {
+    err.textContent = "Herunterladen fehlgeschlagen: " + e;
+    err.hidden = false;
+  }
+}
+
+async function deleteSavegame(slot) {
+  const save = savegamesState.all.find((s) => s.slot === slot);
+  const ok = await confirmDialog(
+    "Savegame löschen?",
+    `„${save ? save.display_name : "Slot " + slot}" wird vom Server gelöscht.`,
+    "Löschen",
+    true,
+  );
+  if (!ok) return;
+  const err = $("sg-manage-error");
+  err.hidden = true;
+  try {
+    await invoke("delete_savegame", { slot });
+    await loadSavegames();
+  } catch (e) {
+    err.textContent = String(e);
+    err.hidden = false;
+  }
+}
+
+async function pickSavegameFile() {
+  const err = $("sg-upload-error");
+  err.hidden = true;
+  try {
+    const path = await invoke("plugin:dialog|open", {
+      options: { multiple: false, filters: [{ name: "Savegame", extensions: ["zip"] }] },
+    });
+    if (!path) return;
+    savegamesState.uploadPath = Array.isArray(path) ? path[0] : path;
+    $("sg-upload-file-name").textContent = basename(savegamesState.uploadPath);
+    $("btn-sg-upload").disabled = false;
+  } catch (e) {
+    err.textContent = "Dateiauswahl fehlgeschlagen: " + e;
+    err.hidden = false;
+  }
+}
+
+async function uploadSavegame() {
+  const err = $("sg-upload-error");
+  err.hidden = true;
+  if (!savegamesState.uploadPath) return;
+  const slot = Number($("sg-upload-slot").value);
+  const existing = savegamesState.all.find((s) => s.slot === slot);
+  if (existing) {
+    const ok = await confirmDialog(
+      "Savegame überschreiben?",
+      `„${existing.display_name}" in diesem Slot wird durch die hochgeladene Datei ersetzt.`,
+      "Hochladen",
+      true,
+    );
+    if (!ok) return;
+  }
+  const name = $("sg-upload-name").value.trim();
+  const btn = $("btn-sg-upload");
+  const fillWrap = $("sg-upload-progress-wrap");
+  const fill = $("sg-upload-progress-fill");
+  const statusEl = $("sg-upload-status");
+  btn.disabled = true;
+  fillWrap.hidden = false;
+  fill.style.width = "0%";
+  fill.classList.remove("failed");
+  statusEl.textContent = "wird hochgeladen…";
+
+  const unlisten = await listen("savegame-progress", (event) => {
+    const { done, total } = event.payload;
+    if (total) {
+      fill.style.width = `${Math.min(100, (done / total) * 100)}%`;
+      statusEl.textContent = `${fmtBytes(done)} von ${fmtBytes(total)} (${Math.round((done / total) * 100)} %)`;
+    } else {
+      statusEl.textContent = `${fmtBytes(done)} hochgeladen…`;
+    }
+  });
+  try {
+    await invoke("upload_savegame", {
+      slot,
+      name: name || null,
+      path: savegamesState.uploadPath,
+    });
+    fill.style.width = "100%";
+    statusEl.textContent = "hochgeladen";
+    savegamesState.uploadPath = null;
+    $("sg-upload-file-name").textContent = "keine Datei gewählt";
+    $("sg-upload-name").value = "";
+    await loadSavegames();
+  } catch (e) {
+    fill.classList.add("failed");
+    statusEl.textContent = "fehlgeschlagen: " + e;
+    err.textContent = String(e);
+    err.hidden = false;
+  } finally {
+    unlisten();
+    btn.disabled = !savegamesState.uploadPath;
+  }
+}
+
+function backupLabel(b) {
+  return escapeHtml(
+    `Savegame ${b.slot} (${b.timestamp}) - Map: ${b.map}, Play Time: ${fmtPlayTime(b.play_time_minutes)} hh:mm`,
+  );
+}
+
+async function loadRestoreBackups() {
+  const err = $("sg-restore-error");
+  err.hidden = true;
+  const slotVal = $("sg-restore-slot").value;
+  if (!slotVal) {
+    savegamesState.backups = [];
+    $("sg-restore-backup").innerHTML = "";
+    $("sg-restore-empty").hidden = false;
+    $("btn-sg-restore").disabled = true;
+    return;
+  }
+  const slot = Number(slotVal);
+  try {
+    savegamesState.backups = await invoke("list_savegame_backups", { slot });
+    $("sg-restore-empty").hidden = savegamesState.backups.length > 0;
+    $("btn-sg-restore").disabled = savegamesState.backups.length === 0;
+    populateSelect(
+      "sg-restore-backup",
+      savegamesState.backups.map((b, i) => ({ value: String(i), label: backupLabel(b) })),
+      "0",
+    );
+  } catch (e) {
+    err.textContent = String(e);
+    err.hidden = false;
+  }
+}
+
+async function restoreSavegameBackup() {
+  const idx = Number($("sg-restore-backup").value);
+  const backup = savegamesState.backups[idx];
+  if (!backup) return;
+  const ok = await confirmDialog(
+    "Savegame-Backup wiederherstellen?",
+    `Der aktuelle Spielstand in Slot ${backup.slot} geht verloren und wird durch das Backup vom ${backup.timestamp} ersetzt.`,
+    "Wiederherstellen",
+    true,
+  );
+  if (!ok) return;
+  const err = $("sg-restore-error");
+  err.hidden = true;
+  try {
+    await invoke("restore_savegame_backup", { backup });
+    await loadSavegames();
+  } catch (e) {
+    err.textContent = String(e);
+    err.hidden = false;
+  }
+}
+
+function showSavegamesTab(tab) {
+  $("tab-sg-manage").classList.toggle("active", tab === "manage");
+  $("tab-sg-manage").setAttribute("aria-selected", tab === "manage");
+  $("tab-sg-upload").classList.toggle("active", tab === "upload");
+  $("tab-sg-upload").setAttribute("aria-selected", tab === "upload");
+  $("tab-sg-restore").classList.toggle("active", tab === "restore");
+  $("tab-sg-restore").setAttribute("aria-selected", tab === "restore");
+  $("sg-panel-manage").hidden = tab !== "manage";
+  $("sg-panel-upload").hidden = tab !== "upload";
+  $("sg-panel-restore").hidden = tab !== "restore";
+}
+
+function initSavegamesView() {
+  $("tab-sg-manage").addEventListener("click", () => showSavegamesTab("manage"));
+  $("tab-sg-upload").addEventListener("click", () => showSavegamesTab("upload"));
+  $("tab-sg-restore").addEventListener("click", () => showSavegamesTab("restore"));
+  showSavegamesTab("manage");
+
+  $("btn-sg-refresh").addEventListener("click", loadSavegames);
+  $("sg-rows").addEventListener("click", (e) => {
+    const dl = e.target.closest(".btn-sg-download");
+    if (dl) {
+      downloadSavegame(Number(dl.dataset.slot));
+      return;
+    }
+    const del = e.target.closest(".btn-sg-delete");
+    if (del) deleteSavegame(Number(del.dataset.slot));
+  });
+
+  $("btn-sg-pick-file").addEventListener("click", pickSavegameFile);
+  $("btn-sg-upload").addEventListener("click", uploadSavegame);
+
+  $("sg-restore-slot").addEventListener("change", loadRestoreBackups);
+  $("btn-sg-restore").addEventListener("click", restoreSavegameBackup);
+}
+
 // --- Serverprofile (G1, Pflichtenheft 7.4) ---
 let profiles = []; // ProfileDto[] (ohne Passwort) aus list_profiles
 let activeProfileId = null; // Profil-ID der aktuell verbundenen Sitzung, sonst null
@@ -931,12 +1209,14 @@ function show(view) {
   $("mods-view").hidden = view !== "mods";
   $("settings-view").hidden = view !== "settings";
   $("deploy-view").hidden = view !== "deploy";
+  $("savegames-view").hidden = view !== "savegames";
   $("mods-actionbar").hidden = view !== "mods" || modsState.selected.size === 0;
   document
     .querySelectorAll(".nav-item")
     .forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   if (view === "mods") loadMods();
   if (view === "settings") loadSettings();
+  if (view === "savegames") loadSavegames();
 }
 
 function updateNavLocks() {
@@ -1279,9 +1559,15 @@ async function restartServer() {
 function renderOverview(o) {
   $("ov-state").textContent = o.online ? "Online" : "Offline";
   $("ov-version").textContent = o.version ? `Version ${o.version}` : "";
+  $("ov-game-name-card").hidden = !o.game_name;
+  $("ov-game-name").textContent = o.game_name || "—";
   $("ov-mods").textContent = o.mod_total;
   $("ov-mods-sub").textContent = `${o.mod_active} aktiv · ${o.mod_inactive} inaktiv`;
   $("ov-dlc").textContent = o.mod_dlc;
+  $("ov-savegames").textContent = o.savegame_total;
+  $("ov-savegames-sub").textContent = o.savegame_active_map
+    ? `aktiv: ${o.savegame_active_map}`
+    : "";
   setStatus(o);
 }
 
@@ -1302,6 +1588,9 @@ async function disconnect() {
   setStatus(null);
   modsState.all = [];
   modsState.selected.clear();
+  savegamesState.all = [];
+  savegamesState.uploadPath = null;
+  savegamesState.backups = [];
   updateNavLocks();
   renderServerMenu();
   renderProfileList();
@@ -1330,6 +1619,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initModsView();
   initSettingsView();
   initDeployView();
+  initSavegamesView();
 
   // Statusleiste: Server-Dropdown (7.1)
   $("server-pick").addEventListener("click", (e) => {

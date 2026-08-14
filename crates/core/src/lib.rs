@@ -22,6 +22,7 @@ mod logs;
 mod modfile;
 mod modhub;
 mod mods;
+mod savegames;
 mod settings;
 mod verify;
 
@@ -30,8 +31,8 @@ use session::Session;
 pub use error::Error;
 pub use model::{
     CatalogDetails, CatalogEntry, Difficulty, FieldOption, GameSettings, LogChunk, LogListing,
-    LogSource, ModStatus, ModhubCategoryEntry, OpCtx, PauseIfEmpty, Progress, ServerMod,
-    ServerState, SettingsOptions, SettingsRow,
+    LogSource, ModStatus, ModhubCategoryEntry, OpCtx, PauseIfEmpty, Progress, SavegameBackup,
+    ServerMod, ServerSavegame, ServerState, SettingsOptions, SettingsRow,
 };
 pub use modfile::{inspect_local_mod, LocalModInfo};
 pub use modhub::catalog;
@@ -175,6 +176,69 @@ impl ServerControl {
     /// Mod löschen — nur bei **gestopptem** Server (sonst `Error::ServerRunning`).
     pub async fn delete_mod(&self, file_name: &str) -> Result<()> {
         self.session.delete_mod(file_name).await
+    }
+
+    // --- Savegames (Kann, Kap. 1.3 LH / 7.8 LH) ---
+    //
+    // Anders als Mods/Einstellungen **keine** Sperre durch den Serverzustand — verifiziert:
+    // Upload/Löschen/Restore gehen bei laufendem wie bei gestopptem Server.
+
+    /// Belegte Savegame-Slots lesen.
+    pub async fn list_savegames(&self) -> Result<Vec<ServerSavegame>> {
+        self.session.list_savegames().await
+    }
+
+    /// Ziel-Slots des Upload-Formulars lesen — die echten Formular-Optionen (fehlt darin das
+    /// aktuell geladene Savegame, verifiziert), nicht synthetisch 1..20 nachgebaut.
+    pub async fn list_savegame_upload_slots(&self) -> Result<Vec<FieldOption>> {
+        self.session.list_savegame_upload_slots().await
+    }
+
+    /// Zeitstempel-Backups eines Slots lesen.
+    pub async fn list_savegame_backups(&self, slot: u8) -> Result<Vec<SavegameBackup>> {
+        self.session.list_savegame_backups(slot).await
+    }
+
+    /// Savegame eines Slots herunterladen (einfacher Datei-Download, kein Q3-Nachweis nötig —
+    /// rein lesend).
+    pub async fn download_savegame(&self, slot: u8, local: &std::path::Path) -> Result<()> {
+        self.session.download_savegame(slot, local).await
+    }
+
+    /// Savegame über das Web-Formular hochladen (bis 1,71 GB; darüber `NoFileAccess`).
+    pub async fn upload_savegame(
+        &self,
+        slot: u8,
+        name: Option<&str>,
+        path: &std::path::Path,
+    ) -> Result<()> {
+        self.session.upload_savegame(slot, name, path).await
+    }
+
+    /// Wie [`Self::upload_savegame`], meldet aber laufend den Fortschritt (`progress`-Events).
+    pub async fn upload_savegame_with_progress<F>(
+        &self,
+        slot: u8,
+        name: Option<&str>,
+        path: &std::path::Path,
+        on_progress: F,
+    ) -> Result<()>
+    where
+        F: Fn(Progress) + Send + Sync + 'static,
+    {
+        self.session
+            .upload_savegame_with_progress(slot, name, path, on_progress)
+            .await
+    }
+
+    /// Savegame löschen — destruktiv.
+    pub async fn delete_savegame(&self, slot: u8) -> Result<()> {
+        self.session.delete_savegame(slot).await
+    }
+
+    /// Zeitstempel-Backup wiederherstellen — überschreibt den Slot vollständig.
+    pub async fn restore_savegame_backup(&self, backup: &SavegameBackup) -> Result<()> {
+        self.session.restore_savegame_backup(backup).await
     }
 
     // --- Steuerung (F6) — Voll-Formular-Umlauf, Ergebnis am Zustand belegt ---
