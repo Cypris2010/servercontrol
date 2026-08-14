@@ -1559,6 +1559,8 @@ async function restartServer() {
 function renderOverview(o) {
   $("ov-state").textContent = o.online ? "Online" : "Offline";
   $("ov-version").textContent = o.version ? `Version ${o.version}` : "";
+  $("ov-game-name-card").hidden = !o.game_name;
+  $("ov-game-name").textContent = o.game_name || "—";
   $("ov-mods").textContent = o.mod_total;
   $("ov-mods-sub").textContent = `${o.mod_active} aktiv · ${o.mod_inactive} inaktiv`;
   $("ov-dlc").textContent = o.mod_dlc;

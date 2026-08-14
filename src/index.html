@@ -104,6 +104,10 @@
               <div id="ov-state" class="card-value">—</div>
               <div id="ov-version" class="card-sub"></div>
             </div>
+            <div class="card" id="ov-game-name-card" hidden>
+              <div class="card-label">Server-Name</div>
+              <div id="ov-game-name" class="card-value">—</div>
+            </div>
             <div class="card">
               <div class="card-label">Mods gesamt</div>
               <div id="ov-mods" class="card-value">—</div>
@@ -516,6 +520,14 @@
           </aside>
 
           <section class="peditor">
+            <div class="editor-foot editor-foot-top">
+              <button type="button" id="pf-delete" class="ghost danger" hidden>Profil löschen</button>
+              <div class="grow"></div>
+              <button type="button" id="pf-connect" class="ghost" hidden>Verbinden</button>
+              <button type="submit" id="pf-save" class="primary-btn" form="profile-form">Speichern</button>
+            </div>
+            <p id="profile-error" class="error" hidden></p>
+
             <h3 id="edit-title">Neues Profil</h3>
             <p class="hint small">
               Zugangsdaten gehen in den OS-Schlüsselbund, nie in eine Datei der App.
@@ -607,14 +619,6 @@
                 </div>
               </div>
 
-              <p id="profile-error" class="error" hidden></p>
-
-              <div class="editor-foot">
-                <button type="button" id="pf-delete" class="ghost danger" hidden>Profil löschen</button>
-                <div class="grow"></div>
-                <button type="button" id="pf-connect" class="ghost" hidden>Verbinden</button>
-                <button type="submit" id="pf-save" class="primary-btn">Speichern</button>
-              </div>
             </form>
           </section>
         </div>

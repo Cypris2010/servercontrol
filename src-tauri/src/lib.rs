@@ -23,6 +23,12 @@ struct AppState {
 struct Overview {
     online: bool,
     version: Option<String>,
+    /// Der In-Game-Servername (`game_name`) — nur bei **laufendem** Server verfügbar: das Panel
+    /// zeigt dort die reine Textanzeige (`read_settings_summary`, Zeile „Server Game Name"), das
+    /// `configuration`-Formular für `read_settings` fehlt dann (Kap. 6.1 PH). Bei gestopptem
+    /// Server bewusst `None` statt eines zweiten Abrufwegs — G6 zeigt den Namen dort ohnehin
+    /// editierbar im Formular.
+    game_name: Option<String>,
     mod_total: usize,
     mod_active: usize,
     mod_inactive: usize,
@@ -41,6 +47,16 @@ async fn build_overview(sc: &ServerControl) -> Result<Overview, String> {
         ServerState::Online { version } => (true, version),
         ServerState::Offline => (false, None),
     };
+    let game_name = if online {
+        sc.read_settings_summary()
+            .await
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .find(|row| row.label == "Server Game Name")
+            .map(|row| row.value)
+    } else {
+        None
+    };
     let active = mods
         .iter()
         .filter(|m| m.status == ModStatus::Active)
@@ -49,6 +65,7 @@ async fn build_overview(sc: &ServerControl) -> Result<Overview, String> {
     Ok(Overview {
         online,
         version,
+        game_name,
         mod_total: mods.len(),
         mod_active: active,
         mod_inactive: mods.len() - active,
