@@ -29,6 +29,7 @@ use futures_util::StreamExt;
 use reqwest::header::COOKIE;
 use reqwest::{Client, RequestBuilder, Response};
 use scraper::{Html, Selector};
+use tokio::io::AsyncWriteExt;
 use url::Url;
 
 use crate::error::Error;
@@ -596,6 +597,201 @@ impl Session {
         form_action(html, form_name)
             .and_then(|a| self.base_url.join(&a).ok())
             .ok_or_else(|| Error::FormMismatch(format!("Formular {form_name} nicht gefunden")))
+    }
+
+    // --- Savegames (Kann, Kap. 1.3 LH / 7.8 LH) — natives Web-Formular, wie bei Mods ---
+    //
+    // Anders als die Mod-Umschaltung/`save_settings` gilt hier **keine** Sperre durch den
+    // Serverzustand (live verifiziert: Upload/Löschen/Restore funktionieren bei laufendem
+    // Server genau wie bei gestopptem).
+
+    /// URL der Savegame-Verwaltungsseite (`savegames.html?lang=en`).
+    fn savegames_page_url(&self) -> Result<Url> {
+        self.base_url
+            .join("savegames.html?lang=en")
+            .map_err(|e| Error::Parse(e.to_string()))
+    }
+
+    /// Belegte Savegame-Slots lesen (Kap. 7.8 LH).
+    pub(crate) async fn list_savegames(&self) -> Result<Vec<crate::model::ServerSavegame>> {
+        let url = self.savegames_page_url()?;
+        Ok(crate::savegames::parse_savegames(
+            &self.get_authenticated(url).await?,
+        ))
+    }
+
+    /// Ziel-Slots des Upload-Formulars lesen (`index_upload`-Dropdown, Kap. 7.8 LH) — die
+    /// **echten** Formular-Optionen, nicht synthetisch 1..20 nachgebaut. Live verifiziert: fehlt
+    /// darin das aktuell geladene Savegame (kann nicht überschrieben werden, während es läuft).
+    pub(crate) async fn list_savegame_upload_slots(
+        &self,
+    ) -> Result<Vec<crate::model::FieldOption>> {
+        let url = self.savegames_page_url()?;
+        Ok(crate::savegames::parse_upload_slot_options(
+            &self.get_authenticated(url).await?,
+        ))
+    }
+
+    /// Zeitstempel-Backups eines Slots lesen (Kap. 7.8 LH) — das Panel liefert alle Slots in
+    /// einem gemeinsamen Dropdown, hier nach `slot` gefiltert.
+    pub(crate) async fn list_savegame_backups(
+        &self,
+        slot: u8,
+    ) -> Result<Vec<crate::model::SavegameBackup>> {
+        let url = self.savegames_page_url()?;
+        let all = crate::savegames::parse_backups(&self.get_authenticated(url).await?);
+        Ok(all.into_iter().filter(|b| b.slot == slot).collect())
+    }
+
+    /// Savegame eines Slots herunterladen (`GET savegame<slot>`, Kap. 7.8 LH) — ein einfacher
+    /// Datei-Download, kein Formular-Umlauf nötig. Rein lesend, daher ohne Q3-Nachweis (nichts
+    /// am Server ändert sich).
+    pub(crate) async fn download_savegame(&self, slot: u8, local: &Path) -> Result<()> {
+        let url = self
+            .base_url
+            .join(&format!("savegame{slot}"))
+            .map_err(|e| Error::Parse(e.to_string()))?;
+        let resp = self.send(self.client.get(url)).await?;
+        let mut file = tokio::fs::File::create(local)
+            .await
+            .map_err(|e| Error::Parse(format!("Zieldatei nicht schreibbar: {e}")))?;
+        let mut stream = resp.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(map_reqwest)?;
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| Error::Parse(format!("Zieldatei nicht schreibbar: {e}")))?;
+        }
+        Ok(())
+    }
+
+    /// Savegame über das Web-Formular hochladen (`index_upload`+`custom_name`+`file`, Kap. 7.8
+    /// LH). Bis 1,71 GB; darüber `NoFileAccess` (FTP/SFTP-Weg noch nicht umgesetzt, MZ4). Q3:
+    /// danach muss der Slot in [`Self::list_savegames`] belegt sein.
+    pub(crate) async fn upload_savegame(
+        &self,
+        slot: u8,
+        name: Option<&str>,
+        path: &Path,
+    ) -> Result<()> {
+        self.upload_savegame_with_progress(slot, name, path, |_| {})
+            .await
+    }
+
+    /// Wie [`Self::upload_savegame`], meldet aber laufend den Fortschritt (analog
+    /// `upload_mod_with_progress`).
+    pub(crate) async fn upload_savegame_with_progress<F>(
+        &self,
+        slot: u8,
+        name: Option<&str>,
+        path: &Path,
+        on_progress: F,
+    ) -> Result<()>
+    where
+        F: Fn(crate::model::Progress) + Send + Sync + 'static,
+    {
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| Error::Parse("ungültiger Dateiname".to_string()))?
+            .to_string();
+        let file = tokio::fs::File::open(path)
+            .await
+            .map_err(|e| Error::Parse(format!("Datei nicht lesbar: {e}")))?;
+        let total = file
+            .metadata()
+            .await
+            .map_err(|e| Error::Parse(format!("Datei nicht lesbar: {e}")))?
+            .len();
+        if total > MAX_WEB_UPLOAD {
+            return Err(Error::NoFileAccess);
+        }
+
+        let sent = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let stream = tokio_util::io::ReaderStream::new(file).inspect(move |chunk| {
+            if let Ok(bytes) = chunk {
+                let now = sent.fetch_add(bytes.len() as u64, std::sync::atomic::Ordering::Relaxed)
+                    + bytes.len() as u64;
+                on_progress(crate::model::Progress {
+                    done: now,
+                    total: Some(total),
+                });
+            }
+        });
+        let part =
+            reqwest::multipart::Part::stream_with_length(reqwest::Body::wrap_stream(stream), total)
+                .file_name(file_name)
+                .mime_str("application/zip")
+                .map_err(map_reqwest)?;
+        let form = reqwest::multipart::Form::new()
+            .text("index_upload", slot.to_string())
+            .text("custom_name", name.unwrap_or("").to_string())
+            .part("file", part)
+            .text("upload", "Upload");
+
+        let url = self.savegames_page_url()?;
+        self.send(self.client.post(url).multipart(form)).await?;
+
+        let occupied = self
+            .list_savegames()
+            .await?
+            .iter()
+            .any(|s| s.slot == slot);
+        if occupied {
+            Ok(())
+        } else {
+            Err(Error::NotProven)
+        }
+    }
+
+    /// Savegame löschen (`savegames.html?delete_<slot>=true&lang=en`, Kap. 7.8 LH) —
+    /// destruktiv. Q3: danach darf der Slot nicht mehr in [`Self::list_savegames`] auftauchen.
+    pub(crate) async fn delete_savegame(&self, slot: u8) -> Result<()> {
+        let url = self
+            .base_url
+            .join(&format!("savegames.html?delete_{slot}=true&lang=en"))
+            .map_err(|e| Error::Parse(e.to_string()))?;
+        self.send(self.client.get(url)).await?;
+
+        let gone = !self
+            .list_savegames()
+            .await?
+            .iter()
+            .any(|s| s.slot == slot);
+        if gone {
+            Ok(())
+        } else {
+            Err(Error::NotProven)
+        }
+    }
+
+    /// Zeitstempel-Backup wiederherstellen (`backup_restore=<slot>_<timestamp>`, Kap. 7.8 LH) —
+    /// überschreibt den Slot vollständig, daher bestätigungspflichtig in der GUI (Q2, G7). Q3:
+    /// danach muss die Map des Slots mit der des Backups übereinstimmen — reine Anwesenheit
+    /// sagt hier nichts, der Slot war ja schon vorher belegt.
+    pub(crate) async fn restore_savegame_backup(
+        &self,
+        backup: &crate::model::SavegameBackup,
+    ) -> Result<()> {
+        let url = self.savegames_page_url()?;
+        let value = format!("{}_{}", backup.slot, backup.timestamp);
+        self.send(
+            self.client
+                .post(url)
+                .form(&[("backup_restore", value.as_str()), ("upload", "Restore")]),
+        )
+        .await?;
+
+        let matches = self
+            .list_savegames()
+            .await?
+            .iter()
+            .any(|s| s.slot == backup.slot && s.map == backup.map);
+        if matches {
+            Ok(())
+        } else {
+            Err(Error::NotProven)
+        }
     }
 
     // --- Serversteuerung (F6) — Voll-Formular-Umlauf, Ergebnis am Zustand belegt ---

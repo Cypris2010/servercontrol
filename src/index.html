@@ -69,6 +69,10 @@
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 9l5 -5l5 5"/><path d="M12 4l0 12"/></svg>
           Bereitstellen
         </button>
+        <button class="nav-item" data-view="savegames">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h10l4 4v10a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2"/><path d="M10 14a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M14 4l0 4l-6 0l0 -4"/></svg>
+          Savegames
+        </button>
         <button class="nav-item" data-view="settings">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/></svg>
           Spieleinstellungen
@@ -108,6 +112,11 @@
             <div class="card">
               <div class="card-label">DLC</div>
               <div id="ov-dlc" class="card-value">—</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Savegames</div>
+              <div id="ov-savegames" class="card-value">—</div>
+              <div id="ov-savegames-sub" class="card-sub"></div>
             </div>
           </div>
         </section>
@@ -373,6 +382,109 @@
 
             <p id="modhub-error" class="error" hidden></p>
             <div id="modhub-results" class="modhub-results"></div>
+          </div>
+        </section>
+
+        <!-- Savegames (G7, Kann-Ziel, Kap. 7.9a PH / 7.8 LH) -->
+        <section id="savegames-view" class="view" hidden>
+          <div class="toolbar">
+            <h1>Savegames</h1>
+            <button id="btn-sg-refresh" class="ghost"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/></svg>Aktualisieren</button>
+          </div>
+
+          <div class="tabs" role="tablist">
+            <button type="button" id="tab-sg-manage" class="tab-btn" role="tab" aria-selected="true">
+              Manage Savegames
+            </button>
+            <button type="button" id="tab-sg-upload" class="tab-btn" role="tab" aria-selected="false">
+              Upload Savegame
+            </button>
+            <button type="button" id="tab-sg-restore" class="tab-btn" role="tab" aria-selected="false">
+              Restore Savegame Backup
+            </button>
+          </div>
+
+          <!-- Reiter: Manage Savegames -->
+          <div id="sg-panel-manage" class="tab-panel">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Slot</th>
+                    <th>Map</th>
+                    <th>Money</th>
+                    <th>Play Time</th>
+                    <th>Difficulty</th>
+                    <th class="c-del"></th>
+                  </tr>
+                </thead>
+                <tbody id="sg-rows"></tbody>
+              </table>
+            </div>
+            <p id="sg-manage-empty" class="hint-inline" hidden>Keine belegten Savegame-Slots.</p>
+            <p id="sg-manage-error" class="error" hidden></p>
+          </div>
+
+          <!-- Reiter: Upload Savegame -->
+          <div id="sg-panel-upload" class="tab-panel" hidden>
+            <p class="hint">
+              Savegame-Datei hochladen (ZIP, bis 1,71 GB über das Web-Formular; größere Dateien
+              brauchen FTP/SFTP, das ist in dieser Version noch nicht umgesetzt). Ein belegter
+              Zielslot wird dabei überschrieben.
+            </p>
+            <div class="card2">
+              <div class="field">
+                <label>Slot</label>
+                <select class="inp" id="sg-upload-slot"></select>
+              </div>
+              <div class="field">
+                <label>Savegame Name (optional)</label>
+                <input class="inp" id="sg-upload-name" placeholder="wie im Spiel angezeigt" />
+              </div>
+              <div class="field">
+                <label>Savegame (ZIP)</label>
+                <button type="button" id="btn-sg-pick-file" class="ghost">
+                  <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 9l5 -5l5 5"/><path d="M12 4l0 12"/></svg>
+                  Datei auswählen…
+                </button>
+                <div id="sg-upload-file-name" class="hint-inline">keine Datei gewählt</div>
+              </div>
+              <div class="progress-wrap" id="sg-upload-progress-wrap" hidden>
+                <div class="progress-fill" id="sg-upload-progress-fill"></div>
+              </div>
+              <div id="sg-upload-status" class="hint-inline"></div>
+              <div class="editor-foot">
+                <div class="grow"></div>
+                <button type="button" id="btn-sg-upload" class="primary-btn" disabled>Upload</button>
+              </div>
+            </div>
+            <p id="sg-upload-error" class="error" hidden></p>
+          </div>
+
+          <!-- Reiter: Restore Savegame Backup -->
+          <div id="sg-panel-restore" class="tab-panel" hidden>
+            <p class="hint">
+              Der Server legt automatisch Zeitstempel-Backups belegter Slots an. Wiederherstellen
+              überschreibt den aktuellen Spielstand des gewählten Slots.
+            </p>
+            <div class="card2">
+              <div class="field">
+                <label>Slot</label>
+                <select class="inp" id="sg-restore-slot"></select>
+              </div>
+              <div class="field">
+                <label>Backup</label>
+                <select class="inp" id="sg-restore-backup"></select>
+              </div>
+              <div class="editor-foot">
+                <div class="grow"></div>
+                <button type="button" id="btn-sg-restore" class="ghost danger" disabled>
+                  Wiederherstellen…
+                </button>
+              </div>
+            </div>
+            <p id="sg-restore-empty" class="hint-inline" hidden>Keine Backups für diesen Slot.</p>
+            <p id="sg-restore-error" class="error" hidden></p>
           </div>
         </section>
       </main>

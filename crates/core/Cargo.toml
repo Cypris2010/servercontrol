@@ -30,8 +30,9 @@ keyring = { version = "3", default-features = false, features = [
     "sync-secret-service",
     "crypto-rust",
 ] }
-# Warten auf Zustandswechsel (Polling) + Datei lesen fürs Hochladen. reqwest bringt tokio mit.
-tokio = { version = "1", features = ["time", "fs"] }
+# Warten auf Zustandswechsel (Polling) + Datei lesen/schreiben fürs Hoch-/Herunterladen.
+# reqwest bringt tokio mit; "io-util" für `AsyncWriteExt` beim Savegame-Download (Kap. 7.8 LH).
+tokio = { version = "1", features = ["time", "fs", "io-util"] }
 # Log-Inhalt kommt base64-kodiert vom Live-Log-Endpunkt (MZ5).
 base64 = "0.22"
 # Plattformkonformer Konfigurationsordner (Kap. 8.3) — nicht geraten, sondern ermittelt.
