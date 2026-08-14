@@ -619,7 +619,9 @@ async fn list_savegame_backups(
 ) -> Result<Vec<SavegameBackup>, String> {
     let guard = state.sc.lock().await;
     let sc = &guard.as_ref().ok_or("Nicht verbunden")?.1;
-    sc.list_savegame_backups(slot).await.map_err(|e| e.to_string())
+    sc.list_savegame_backups(slot)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Savegame herunterladen — `path` kommt vom nativen Speichern-Dialog (Frontend), rein lesend

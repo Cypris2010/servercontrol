@@ -40,10 +40,7 @@ pub(crate) fn parse_savegames(html: &str) -> Vec<ServerSavegame> {
             slot,
             display_name: cols.get("Slot").cloned().unwrap_or_default(),
             map: cols.get("Map").cloned().unwrap_or_default(),
-            money: cols
-                .get("Money")
-                .and_then(|s| parse_money(s))
-                .unwrap_or(0),
+            money: cols.get("Money").and_then(|s| parse_money(s)).unwrap_or(0),
             play_time_minutes: cols
                 .get("Play Time (hh:mm)")
                 .and_then(|s| parse_play_time(s))
@@ -270,7 +267,10 @@ mod tests {
         assert_eq!(s1.money, 500_000);
         assert_eq!(s1.play_time_minutes, 24);
         assert_eq!(s1.difficulty, Difficulty::Normal);
-        assert!(s1.can_delete, "normaler Slot hat trotz laufendem Server einen Lösch-Link");
+        assert!(
+            s1.can_delete,
+            "normaler Slot hat trotz laufendem Server einen Lösch-Link"
+        );
     }
 
     #[test]

@@ -732,11 +732,7 @@ impl Session {
         let url = self.savegames_page_url()?;
         self.send(self.client.post(url).multipart(form)).await?;
 
-        let occupied = self
-            .list_savegames()
-            .await?
-            .iter()
-            .any(|s| s.slot == slot);
+        let occupied = self.list_savegames().await?.iter().any(|s| s.slot == slot);
         if occupied {
             Ok(())
         } else {
@@ -753,11 +749,7 @@ impl Session {
             .map_err(|e| Error::Parse(e.to_string()))?;
         self.send(self.client.get(url)).await?;
 
-        let gone = !self
-            .list_savegames()
-            .await?
-            .iter()
-            .any(|s| s.slot == slot);
+        let gone = !self.list_savegames().await?.iter().any(|s| s.slot == slot);
         if gone {
             Ok(())
         } else {
